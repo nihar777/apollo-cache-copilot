@@ -39,7 +39,7 @@
     "react-native",
     "mcp"
   ],
-  "author": "",
+  "author": "Nihar Devmurari",
   "license": "ISC",
   "devDependencies": {
     "@apollo/client": "^3.9.0",
@@ -64,5 +64,13 @@
     "@langchain/langgraph": "^1.4.10",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nihar777/apollo-cache-copilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nihar777/apollo-cache-copilot/issues"
+  },
+  "homepage": "https://github.com/nihar777/apollo-cache-copilot#readme"
 }
