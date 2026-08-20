@@ -131,7 +131,7 @@ correlates a finding with the mutation or fragment that wrote it.
 ## Installation
 
 ```bash
-npm install apollo-cache-copilot
+npm install @indianic/apollo-cache-copilot
 # or, from a checkout
 npm install && npm run build
 ```
@@ -250,7 +250,7 @@ console.log(JSON.stringify(client.cache.extract()));
 ```
 
 ```bash
-npx apollo-copilot inspect ./cache-snapshot.json
+npx -y -p @indianic/apollo-cache-copilot apollo-copilot inspect ./cache-snapshot.json
 ```
 
 ```
@@ -311,7 +311,7 @@ get the JSON.
   "mcpServers": {
     "apollo-cache-copilot": {
       "command": "npx",
-      "args": ["-y", "apollo-cache-copilot", "mcp"]
+      "args": ["-y", "-p", "@indianic/apollo-cache-copilot", "apollo-copilot", "mcp"]
     }
   }
 }
@@ -342,7 +342,7 @@ Restart Claude Desktop. The three tools appear under the tools menu.
   "mcpServers": {
     "apollo-cache-copilot": {
       "command": "npx",
-      "args": ["-y", "apollo-cache-copilot", "mcp"]
+      "args": ["-y", "-p", "@indianic/apollo-cache-copilot", "apollo-copilot", "mcp"]
     }
   }
 }
