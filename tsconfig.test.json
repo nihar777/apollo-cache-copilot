@@ -1,0 +1,8 @@
+{
+  // Type-checks everything, including tests and fixtures, and emits nothing.
+  // `tsconfig.json` is the build and deliberately excludes them.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src"],
+  "exclude": []
+}

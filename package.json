@@ -1,0 +1,68 @@
+{
+  "name": "apollo-cache-copilot",
+  "version": "1.0.0",
+  "description": "AI Copilot + MCP server for diagnosing Apollo InMemoryCache normalization defects in React Native.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "dist/index.d.ts",
+      "import": "dist/index.js"
+    },
+    "./server": {
+      "types": "dist/mcp/server.d.ts",
+      "import": "dist/mcp/server.js"
+    }
+  },
+  "bin": {
+    "apollo-copilot": "bin/apollo-copilot.js",
+    "apollo-copilot-mcp": "bin/apollo-copilot-mcp.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "mcp": "node bin/apollo-copilot-mcp.js"
+  },
+  "keywords": [
+    "apollo",
+    "graphql",
+    "cache",
+    "react-native",
+    "mcp"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@apollo/client": "^3.9.0",
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.2.0",
+    "react": "^18.2.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@apollo/client": "^3.8.0 || ^4.0.0",
+    "react": ">=17.0.0",
+    "react-native": ">=0.70.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.8",
+    "@langchain/langgraph": "^1.4.10",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  }
+}

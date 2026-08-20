@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel superseded runs on the same ref — a force-push doesn't need the old run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One red version shouldn't hide the state of the others.
+      fail-fast: false
+      matrix:
+        # Node 18 is deliberately absent: vitest 4 declares
+        # `^20 || ^22 || >=24` and @langchain/core declares `>=20`.
+        # Add '18.x' back only after those constraints change.
+        node-version: ['20.x', '22.x']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Build runs FIRST: the integration tests and tsconfig.test.json both
+      # import `dist/`, so typecheck and vitest fail against an absent build.
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Verify build outputs
+        run: |
+          set -euo pipefail
+          for f in \
+            dist/index.js \
+            dist/index.d.ts \
+            dist/mcp/server.js \
+            dist/mcp/server.d.ts \
+            dist/tools/inspectDanglingRefs.js \
+            dist/tools/patchCache.js \
+            dist/agent/graph.js \
+            dist/schemas/tools.js
+          do
+            test -s "$f" || { echo "::error::missing or empty build output: $f"; exit 1; }
+          done
+          # Tests are excluded from the build; a stray one in dist means
+          # tsconfig.json's exclude regressed.
+          if find dist -path '*__tests__*' -o -path '*__mocks__*' | grep -q .; then
+            echo "::error::test/fixture files leaked into dist"
+            exit 1
+          fi
+          # The published entry points must actually load.
+          node -e "import('./dist/index.js').then(m => { if (!m.inspectDanglingRefs) throw new Error('missing export'); })"
+          node --input-type=module -e "import('./dist/mcp/server.js').then(m => m.createServer())"
+
+      - name: Pack (dry run)
+        run: npm pack --dry-run

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src"],
+  // Build config: tests and fixtures stay out of `dist` so the published
+  // package is just the tools — and so vitest can't pick up a stale compiled
+  // copy of a test and run it twice. `tsconfig.test.json` type-checks them.
+  "exclude": ["src/**/__tests__/**", "src/__mocks__/**"]
+}
