@@ -54,6 +54,9 @@ Diagnosis moves from "paste a 10MB blob and squint" to a conversation.
 
 ## Architecture
 
+> Four-figure walkthrough — the defect, the process, the graph, the JSON
+> boundary: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+
 ```mermaid
 flowchart TD
     subgraph client["MCP client — Claude Desktop / Cursor"]
