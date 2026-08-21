@@ -182,6 +182,16 @@ git push && git push --tags
 Published with `--provenance`, so the npm registry carries a Sigstore
 attestation tying the artifact to the workflow run that built it.
 
+## Security
+
+Do not report vulnerabilities in a public issue or PR — see
+[SECURITY.md](SECURITY.md) for the private advisory route and for what is in
+and out of scope.
+
+One thing that applies to every contributor: a `cache.extract()` snapshot is
+production data. Scrub it before attaching it to an issue, a test fixture, or a
+conversation with a model.
+
 ## Conduct
 
 By participating you agree to the

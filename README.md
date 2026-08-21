@@ -438,6 +438,11 @@ snapshot almost every report is reproducible in a single command.
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+Found a security issue? Do not open a public issue — see
+[SECURITY.md](SECURITY.md). Note that a `cache.extract()` snapshot is
+production data: scrub it before pasting it anywhere, including into a chat
+with a model.
+
 ## License
 
 ISC — see [LICENSE](LICENSE).
