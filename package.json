@@ -67,12 +67,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nihar777/apollo-cache-copilot.git"
+    "url": "git+https://github.com/nihard-hub/apollo-cache-copilot.git"
   },
   "bugs": {
-    "url": "https://github.com/nihar777/apollo-cache-copilot/issues"
+    "url": "https://github.com/nihard-hub/apollo-cache-copilot/issues"
   },
-  "homepage": "https://github.com/nihar777/apollo-cache-copilot#readme",
+  "homepage": "https://github.com/nihard-hub/apollo-cache-copilot#readme",
   "publishConfig": {
     "access": "public"
   },
