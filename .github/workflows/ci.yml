@@ -76,3 +76,35 @@ jobs:
 
       - name: Pack (dry run)
         run: npm pack --dry-run
+
+      # The step above only lists what ships; the checks above it import
+      # `./dist/...` by relative path, which never consults the `exports` map.
+      # An exports target missing its `./` prefix is therefore invisible to
+      # every other step and breaks every consumer. Install the real tarball
+      # and import by package name — the way a user does.
+      - name: Verify the tarball resolves by package name
+        run: |
+          set -euo pipefail
+          tgz="$(npm pack --silent)"
+          tmp="$(mktemp -d)"
+          mv "$tgz" "$tmp/"
+          cd "$tmp"
+          npm init -y >/dev/null 2>&1
+          npm install --silent "./$tgz"
+
+          # Both documented entry points, resolved through `exports`.
+          node -e "import('apollo-cache-copilot').then(m => {
+            if (typeof m.inspectDanglingRefs !== 'function') throw new Error('missing inspectDanglingRefs export');
+            if (typeof m.patchCache !== 'function') throw new Error('missing patchCache export');
+          })"
+          node -e "import('apollo-cache-copilot/server').then(m => m.createServer())"
+
+          # And the installed CLI, on a snapshot with one seeded defect.
+          cat > snap.json <<'JSON'
+          {
+            "ROOT_QUERY": { "__typename": "Query", "u": { "__ref": "User:1" } },
+            "User:1": { "__typename": "User", "id": "1", "avatar": { "__ref": "Avatar:99" } }
+          }
+          JSON
+          npx apollo-copilot inspect snap.json | tee out.txt
+          grep -q 'ORPHANED_REF' out.txt || { echo "::error::installed CLI did not report the seeded defect"; exit 1; }

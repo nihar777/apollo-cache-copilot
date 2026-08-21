@@ -102,8 +102,22 @@ describe('integration: CLI entry points', () => {
 
     expect(pkg.exports).toBeDefined();
     expect(pkg.exports['.']).toBeDefined();
-    expect(pkg.exports['.'].import).toBe('dist/index.js');
-    expect(pkg.exports['.'].types).toBe('dist/index.d.ts');
+
+    // Every `exports` target must be a relative specifier. Node ESM rejects a
+    // bare `dist/index.js` with ERR_INVALID_PACKAGE_TARGET, so an import by
+    // package name fails for every consumer — while `main`/`types` and any
+    // relative import inside the repo keep working, which is what let this ship
+    // unnoticed. CI additionally installs the tarball and imports by name.
+    for (const [subpath, entry] of Object.entries<Record<string, string>>(pkg.exports)) {
+      for (const [condition, target] of Object.entries(entry)) {
+        expect(target, `exports["${subpath}"].${condition} must start with "./"`).toMatch(/^\.\//);
+      }
+    }
+
+    expect(pkg.exports['.'].import).toBe('./dist/index.js');
+    expect(pkg.exports['.'].types).toBe('./dist/index.d.ts');
+    expect(pkg.exports['./server'].import).toBe('./dist/mcp/server.js');
+    expect(pkg.exports['./server'].types).toBe('./dist/mcp/server.d.ts');
   });
 
   it('package.json main points to dist/index.js', async () => {
