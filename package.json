@@ -1,5 +1,5 @@
 {
-  "name": "@indianic/apollo-cache-copilot",
+  "name": "apollo-cache-copilot",
   "version": "1.0.0",
   "description": "AI Copilot + MCP server for diagnosing Apollo InMemoryCache normalization defects in React Native.",
   "type": "module",
@@ -39,7 +39,7 @@
     "react-native",
     "mcp"
   ],
-  "author": "Nihar Devmurari",
+  "author": "Nihar Devmurari (https://github.com/nihar777)",
   "license": "ISC",
   "devDependencies": {
     "@apollo/client": "^3.9.0",
@@ -67,12 +67,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nihard-hub/apollo-cache-copilot.git"
+    "url": "git+https://github.com/nihar777/apollo-cache-copilot.git"
   },
   "bugs": {
-    "url": "https://github.com/nihard-hub/apollo-cache-copilot/issues"
+    "url": "https://github.com/nihar777/apollo-cache-copilot/issues"
   },
-  "homepage": "https://github.com/nihard-hub/apollo-cache-copilot#readme",
+  "homepage": "https://github.com/nihar777/apollo-cache-copilot#readme",
   "publishConfig": {
     "access": "public"
   },

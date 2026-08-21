@@ -1,6 +1,6 @@
 # apollo-cache-copilot
 
-[![CI](https://github.com/nihard-hub/apollo-cache-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/nihard-hub/apollo-cache-copilot/actions/workflows/ci.yml)
+[![CI](https://github.com/nihar777/apollo-cache-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/nihar777/apollo-cache-copilot/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tested with Vitest](https://img.shields.io/badge/tested%20with-vitest-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](#license)
@@ -131,7 +131,7 @@ correlates a finding with the mutation or fragment that wrote it.
 ## Installation
 
 ```bash
-npm install @indianic/apollo-cache-copilot
+npm install apollo-cache-copilot
 # or, from a checkout
 npm install && npm run build
 ```
@@ -250,7 +250,7 @@ console.log(JSON.stringify(client.cache.extract()));
 ```
 
 ```bash
-npx -y -p @indianic/apollo-cache-copilot apollo-copilot inspect ./cache-snapshot.json
+npx -y -p apollo-cache-copilot apollo-copilot inspect ./cache-snapshot.json
 ```
 
 ```
@@ -311,7 +311,7 @@ get the JSON.
   "mcpServers": {
     "apollo-cache-copilot": {
       "command": "npx",
-      "args": ["-y", "-p", "@indianic/apollo-cache-copilot", "apollo-copilot", "mcp"]
+      "args": ["-y", "-p", "apollo-cache-copilot", "apollo-copilot", "mcp"]
     }
   }
 }
@@ -342,7 +342,7 @@ Restart Claude Desktop. The three tools appear under the tools menu.
   "mcpServers": {
     "apollo-cache-copilot": {
       "command": "npx",
-      "args": ["-y", "-p", "@indianic/apollo-cache-copilot", "apollo-copilot", "mcp"]
+      "args": ["-y", "-p", "apollo-cache-copilot", "apollo-copilot", "mcp"]
     }
   }
 }
