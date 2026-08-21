@@ -1,0 +1,49 @@
+name: Feature request
+description: A new defect kind, a new tool, or a change to an existing one.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This tool stays useful by staying narrow: it finds structural defects in
+        a serialized cache and proposes mechanical repairs. Proposals that fit
+        that shape move fastest.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The defect or gap
+      description: What goes wrong in a real cache today that the tool cannot tell you about?
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: What the cache looks like
+      description: A minimal snapshot fragment showing the shape you want detected.
+      render: json
+    validations:
+      required: false
+
+  - type: dropdown
+    id: repairable
+    attributes:
+      label: Is it mechanically repairable?
+      description: |
+        The agent graph is deliberately LLM-free because every defect it knows
+        about has a deterministic repair. This answer decides where the work lands.
+      options:
+        - "Yes — a modify or evict fixes it"
+        - "No — it is a query or fragment defect, report only"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today
+      description: The workaround you are living with, and why it is not enough.
+    validations:
+      required: false

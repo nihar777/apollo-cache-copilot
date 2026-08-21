@@ -417,6 +417,27 @@ everything and emits nothing.
 | 5 | Developer time from symptom to named root cause | < 5 min (vs. hours) |
 | 6 | Tokens sent to the model per diagnosis | < 10k — findings + subgraph, never the whole cache |
 
+## Contributing
+
+Contributions welcome. Start with **[CONTRIBUTING.md](CONTRIBUTING.md)** — it
+covers setup, the seven invariants in this codebase that break *silently*
+(stdout is the protocol channel; Apollo 3.x needs explicit `/index.js` imports;
+only `messages` accumulates in the graph state), and the seven-step checklist
+for adding a new defect kind.
+
+Two open starters, both small and both live in the tree today:
+
+- **`compareQueryToCache` is declared but unimplemented** — schemas and types
+  exist in `src/schemas/tools.ts` and are exported, but no tool backs them.
+- **The CLI prints a `DANGLING_REF` branch that never fires** —
+  `bin/apollo-copilot.js:71` lists a kind `FindingKindSchema` never emits.
+
+Bug reports need a minimal `cache.extract()` snapshot; the
+[issue form](.github/ISSUE_TEMPLATE/bug_report.yml) asks for one, because with a
+snapshot almost every report is reproducible in a single command.
+
+By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 ISC — see [LICENSE](LICENSE).

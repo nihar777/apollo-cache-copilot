@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How the pieces fit together
+    url: https://github.com/nihar777/apollo-cache-copilot/blob/main/docs/ARCHITECTURE.md
+    about: Four diagrams of the defect classes, the process, the agent graph, and the JSON boundary.
+  - name: Contributing guide
+    url: https://github.com/nihar777/apollo-cache-copilot/blob/main/CONTRIBUTING.md
+    about: Setup, the invariants that break silently, and the seven-step checklist for a new defect kind.

@@ -1,0 +1,82 @@
+name: Bug report
+description: Something the copilot got wrong — a missed defect, a false positive, or a crash.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A cache snapshot is what makes a report actionable. Everything else is
+        secondary — with a snapshot the failure is usually reproducible in one
+        command.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+      placeholder: |
+        Expected an ORPHANED_REF on User:1.avatar. Got no findings.
+    validations:
+      required: true
+
+  - type: textarea
+    id: snapshot
+    attributes:
+      label: Cache snapshot
+      description: |
+        The smallest `JSON.stringify(client.cache.extract())` output that still
+        shows the problem. Trim it down and scrub real ids and user data first —
+        the defect usually survives being reduced to two or three entities.
+      render: json
+      placeholder: |
+        {
+          "ROOT_QUERY": { "__typename": "Query", "user({\"id\":\"1\"})": { "__ref": "User:1" } },
+          "User:1": { "__typename": "User", "id": "1", "avatar": { "__ref": "Avatar:99" } }
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How you ran it
+      description: The command or tool call, and its output.
+      render: shell
+      placeholder: |
+        $ node bin/apollo-copilot.js inspect snapshot.json
+        ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      options:
+        - CLI (apollo-copilot inspect)
+        - MCP tool — inspect_dangling_refs
+        - MCP tool — patch_cache
+        - MCP tool — diagnose_cache_graph
+        - Imported in-process from the package
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `node -v`, plus your apollo-cache-copilot and @apollo/client versions.
+      placeholder: "node v20.20.2 · apollo-cache-copilot 1.0.0 · @apollo/client 3.9.11"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: The snapshot above contains no real user data or credentials.
+          required: true
+        - label: I searched existing issues.
+          required: true
