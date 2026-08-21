@@ -57,32 +57,47 @@ Diagnosis moves from "paste a 10MB blob and squint" to a conversation.
 ```mermaid
 flowchart TD
     subgraph client["MCP client — Claude Desktop / Cursor"]
-        A["Agent (the LLM)"]
+        A["Agent (the LLM)<br/>correlates a finding with<br/>the mutation or fragment that wrote it"]
     end
 
-    subgraph server["apollo-cache-copilot (stdio process)"]
-        T["StdioServerTransport<br/>apollo-copilot mcp"]
-        R["Tool registry<br/>inspect_dangling_refs<br/>patch_cache<br/>diagnose_cache_graph"]
+    subgraph server["apollo-cache-copilot — stdio process"]
+        direction TB
+        T["StdioServerTransport<br/>stdout IS the protocol channel<br/>every log goes to stderr"]
+        R["Tool registry<br/>inspect_dangling_refs · patch_cache · diagnose_cache_graph"]
         Z["Zod schemas<br/>parse in, shape out"]
-
-        subgraph g["cacheAgentGraph (LangGraph, LLM-free)"]
-            I["inspectorNode<br/>writes findings"]
-            RE["reasonerNode<br/>writes proposedPatches"]
-            P["patcherNode<br/>writes narration"]
-            I --> RE --> P
-        end
-
-        TOOL1["inspectDanglingRefs()<br/>pure, on a snapshot"]
-        TOOL2["patchCache()<br/>modify / evict / gc"]
-
-        T --> R --> Z --> I
-        I -.->|calls| TOOL1
-        P -.->|plans for| TOOL2
+        T --> R --> Z
     end
 
-    A <-->|"JSON-RPC 2.0 over stdio"| T
-    TOOL1 --- CACHE["cache.extract() snapshot"]
-    TOOL2 --- LIVE["live ApolloCache"]
+    subgraph g["cacheAgentGraph — LangGraph, deliberately LLM-free"]
+        direction TB
+        I["inspectorNode<br/>owns findings"]
+        RE["reasonerNode<br/>owns proposedPatches"]
+        P["patcherNode<br/>owns messages"]
+        I -->|"findings > 0"| RE --> P
+    end
+
+    F1["inspectDanglingRefs()<br/>walks a snapshot, returns findings"]
+    F2["patchCache()<br/>modify / evict / gc"]
+
+    SNAP[("cache.extract()<br/>snapshot")]
+    LIVE[("live ApolloCache")]
+    DONE(["END"])
+
+    A <==>|"JSON-RPC 2.0 over stdio"| T
+    Z --> I
+    SNAP --> F1
+    I -.->|calls| F1
+    I -.->|"no findings — short-circuit"| DONE
+    P --> DONE
+    P -.->|"plans ops for"| F2
+    F2 --> LIVE
+
+    classDef ro fill:#e8f5e9,stroke:#43a047,color:#1b5e20
+    classDef mut fill:#fff3e0,stroke:#fb8c00,color:#e65100
+    classDef data fill:#eceff1,stroke:#90a4ae,color:#37474f
+    class A,I,RE,P,F1 ro
+    class F2 mut
+    class SNAP,LIVE,DONE data
 ```
 
 ASCII, same thing:
@@ -105,11 +120,13 @@ ASCII, same thing:
   │  cacheAgentGraph  (LangGraph, deliberately LLM-free)│
   │                                                     │
   │  INSPECTOR ──────► REASONER ──────► PATCHER         │
-  │  walks the store   maps findings    narrates the     │
-  │  → findings[]      → patch ops      plan             │
-  │      │                  │                            │
-  │      │ owns `findings`  │ owns `proposedPatches`      │
-  └──────┼──────────────────┼────────────────────────────┘
+  │  walks the store   maps findings    narrates the    │
+  │  → findings[]      → patch ops      plan            │
+  │      │                  │                           │
+  │      │ owns `findings`  │ owns `proposedPatches`    │
+  │      ├── no findings ──► END  (skips both)          │
+  │      │                  │                           │
+  └──────┼──────────────────┼───────────────────────────┘
          ▼                  ▼
   inspectDanglingRefs()   patchCache()
   pure, on a snapshot     cache.modify / evict / gc on a live cache
