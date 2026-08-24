@@ -57,51 +57,7 @@ Diagnosis moves from "paste a 10MB blob and squint" to a conversation.
 > Four-figure walkthrough — the defect, the process, the graph, the JSON
 > boundary: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 
-```mermaid
-flowchart TD
-    subgraph client["MCP client — Claude Desktop / Cursor"]
-        A["Agent (the LLM)<br/>correlates a finding with<br/>the mutation or fragment that wrote it"]
-    end
-
-    subgraph server["apollo-cache-copilot — stdio process"]
-        direction TB
-        T["StdioServerTransport<br/>stdout IS the protocol channel<br/>every log goes to stderr"]
-        R["Tool registry<br/>inspect_dangling_refs · patch_cache · diagnose_cache_graph"]
-        Z["Zod schemas<br/>parse in, shape out"]
-        T --> R --> Z
-    end
-
-    subgraph g["cacheAgentGraph — LangGraph, deliberately LLM-free"]
-        direction TB
-        I["inspectorNode<br/>owns findings"]
-        RE["reasonerNode<br/>owns proposedPatches"]
-        P["patcherNode<br/>owns messages"]
-        I -->|"findings > 0"| RE --> P
-    end
-
-    F1["inspectDanglingRefs()<br/>walks a snapshot, returns findings"]
-    F2["patchCache()<br/>modify / evict / gc"]
-
-    SNAP[("cache.extract()<br/>snapshot")]
-    LIVE[("live ApolloCache")]
-    DONE(["END"])
-
-    A <==>|"JSON-RPC 2.0 over stdio"| T
-    Z --> I
-    SNAP --> F1
-    I -.->|calls| F1
-    I -.->|"no findings — short-circuit"| DONE
-    P --> DONE
-    P -.->|"plans ops for"| F2
-    F2 --> LIVE
-
-    classDef ro fill:#e8f5e9,stroke:#43a047,color:#1b5e20
-    classDef mut fill:#fff3e0,stroke:#fb8c00,color:#e65100
-    classDef data fill:#eceff1,stroke:#90a4ae,color:#37474f
-    class A,I,RE,P,F1 ro
-    class F2 mut
-    class SNAP,LIVE,DONE data
-```
+![Architecture: MCP client ⇄ stdio server ⇄ LangGraph pipeline](https://raw.githubusercontent.com/nihar777/apollo-cache-copilot/main/docs/img/architecture.svg)
 
 ASCII, same thing:
 
