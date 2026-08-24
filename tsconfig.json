@@ -17,5 +17,5 @@
   // Build config: tests and fixtures stay out of `dist` so the published
   // package is just the tools — and so vitest can't pick up a stale compiled
   // copy of a test and run it twice. `tsconfig.test.json` type-checks them.
-  "exclude": ["src/**/__tests__/**", "src/__mocks__/**"]
+  "exclude": ["src/**/__tests__/**", "src/__mocks__/**", "src/evals/**"]
 }
