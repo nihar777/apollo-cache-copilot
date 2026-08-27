@@ -1,6 +1,6 @@
 {
   "name": "apollo-cache-copilot",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "AI Copilot + MCP server for diagnosing Apollo InMemoryCache normalization defects in React Native.",
   "type": "module",
   "engines": {
@@ -31,6 +31,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "eval": "tsx src/evals/runner.ts",
+    "eval:trace": "tsx src/evals/trace_dashboard.ts",
     "mcp": "node bin/apollo-copilot-mcp.js"
   },
   "keywords": [

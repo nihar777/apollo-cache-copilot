@@ -17,6 +17,21 @@ import {
 /** Roots Apollo writes operation results under, when they exist. */
 const DEFAULT_ROOT_IDS = ['ROOT_QUERY', 'ROOT_MUTATION', 'ROOT_SUBSCRIPTION'];
 
+/**
+ * ROOT_QUERY field names that conventionally carry "who's logged in right
+ * now" data. Apollo caches these by field name alone — nothing about the
+ * cache key encodes a session or account, so a corrupted identity switch
+ * (impersonation, account switch, login/logout without a full reset) can
+ * leave one identity's cached value readable by the next.
+ */
+const DEFAULT_IDENTITY_FIELD_NAMES = ['me', 'viewer', 'currentUser', 'currentAccount', 'session', 'profile'];
+
+/** `user({"id":"1"})` -> `user` — strip Apollo's serialized-args suffix. */
+function bareFieldName(storeKeyName: string): string {
+  const paren = storeKeyName.indexOf('(');
+  return paren === -1 ? storeKeyName : storeKeyName.slice(0, paren);
+}
+
 type StoreObject = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
@@ -40,7 +55,8 @@ function refTarget(value: unknown): string | undefined {
 
 export function inspectDanglingRefs(input: unknown): InspectDanglingRefsOutput {
   const args = InspectDanglingRefsInputSchema.parse(input);
-  const { cache, includeUnreachable, includeNormalizationGaps } = args;
+  const { cache, includeUnreachable, includeNormalizationGaps, includeIdentityRisk } = args;
+  const identityFieldNames = args.identityFieldNames ?? DEFAULT_IDENTITY_FIELD_NAMES;
 
   const entityKeys = Object.keys(cache);
   const findings: Finding[] = [];
@@ -142,6 +158,33 @@ export function inspectDanglingRefs(input: unknown): InspectDanglingRefsOutput {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Identity-scoping risk — naming-convention heuristic, ROOT_QUERY only
+  // -------------------------------------------------------------------------
+
+  let identityRiskCount = 0;
+
+  if (includeIdentityRisk) {
+    const rootQuery = cache['ROOT_QUERY'] as StoreObject | undefined;
+    if (rootQuery) {
+      for (const fieldKey of Object.keys(rootQuery)) {
+        if (!identityFieldNames.includes(bareFieldName(fieldKey))) continue;
+        identityRiskCount += 1;
+        findings.push({
+          kind: 'UNSCOPED_IDENTITY_FIELD',
+          path: `ROOT_QUERY.${fieldKey}`,
+          message:
+            `"${fieldKey}" looks identity-scoped, but Apollo caches it by field name only — nothing in the ` +
+            'key encodes which session wrote it. This is a naming heuristic, not proof of a leak: if you ' +
+            'already call client.clearStore() (or use a fresh cache) on every identity switch (impersonation, ' +
+            'account switch, login/logout), this is a false positive. If you don\'t, the next identity can ' +
+            'read the previous one\'s cached value here — a targeted evict() can\'t guarantee it clears ' +
+            'everything an identity switch touched.',
+        });
+      }
+    }
+  }
+
   return {
     findings,
     stats: {
@@ -149,6 +192,7 @@ export function inspectDanglingRefs(input: unknown): InspectDanglingRefsOutput {
       refCount,
       danglingCount,
       unreachableCount,
+      identityRiskCount,
     },
   };
 }

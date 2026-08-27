@@ -32,6 +32,7 @@ export const FindingKindSchema = z.enum([
   'MISSING_TYPENAME',
   'MISSING_ID',
   'UNREACHABLE_ENTITY',
+  'UNSCOPED_IDENTITY_FIELD',
 ]);
 
 export const FindingSchema = z.object({
@@ -66,11 +67,29 @@ export const InspectDanglingRefsInputSchema = z.object({
         'collect). Set false to skip reachability analysis and only check refs/normalization.',
     ),
   includeNormalizationGaps: z
-    .boolean()
+    .boolean()  
     .default(true)
     .describe(
       'Include MISSING_TYPENAME / MISSING_ID findings for inline (non-entity) objects that Apollo could not ' +
         'normalize because they lack a `__typename` or an `id`/`_id` field.',
+    ),
+  includeIdentityRisk: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Include UNSCOPED_IDENTITY_FIELD findings for ROOT_QUERY fields whose name looks identity-scoped ' +
+        '(e.g. "me", "currentUser") but whose cache key carries no session/identity. This is a naming-convention ' +
+        'heuristic, not proof of an active leak — Apollo exposes no session boundary in a bare cache snapshot. ' +
+        'Off by default (unlike the other checks) because it can false-positive on any app with a correctly ' +
+        'reset identity field; opt in explicitly when auditing for cross-identity cache bleed.',
+    ),
+  identityFieldNames: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Override the default list of ROOT_QUERY field names treated as identity-scoped for the ' +
+        'UNSCOPED_IDENTITY_FIELD check: me, viewer, currentUser, currentAccount, session, profile. Matched ' +
+        'against the field name with any serialized args stripped, e.g. "me({\\"locale\\":\\"en\\"})" -> "me".',
     ),
 });
 
@@ -82,6 +101,7 @@ export const InspectDanglingRefsOutputSchema = z.object({
       refCount: z.number().int().describe('Total `__ref` pointers encountered.'),
       danglingCount: z.number().int().describe('Of those refs, how many did not resolve.'),
       unreachableCount: z.number().int().describe('Entities no root reaches.'),
+      identityRiskCount: z.number().int().describe('ROOT_QUERY fields flagged as identity-scoping risks.'),
     })
     .describe('Aggregate counts over the whole cache, independent of the findings list.'),
 });
@@ -191,6 +211,13 @@ export const PatchCacheInputSchema = z.object({
     .boolean()
     .default(false)
     .describe('Validate `operations` and report what would happen without mutating the cache.'),
+  approved: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Human-in-the-loop confirmation for high-risk actions (SET, DELETE). Only enforced when the ' +
+        'operator sets APOLLO_COPILOT_REQUIRE_APPROVAL=true; ignored otherwise. dryRun calls never need it.',
+    ),
 });
 
 export const PatchResultSchema = z.object({
@@ -199,10 +226,28 @@ export const PatchResultSchema = z.object({
   error: z.string().optional().describe('Set when this one operation failed; the rest of the batch still ran.'),
 });
 
+/** One measured step in a trace — see `src/telemetry/tracer.ts`. */
+export const TraceEventSchema = z.object({
+  name: z.string(),
+  status: z.enum(['success', 'error', 'retry']),
+  durationMs: z.number(),
+  memoryDeltaBytes: z.number(),
+  tokenCostUsd: z.number().describe('Always 0 — this engine has no LLM calls to meter.'),
+  entityCount: z.number().optional(),
+  error: z.string().optional(),
+});
+
+export const TraceExportSchema = z.object({
+  events: z.array(TraceEventSchema),
+  totalDurationMs: z.number(),
+  totalTokenCostUsd: z.number(),
+});
+
 export const PatchCacheOutputSchema = z.object({
   dryRun: z.boolean().describe('Echoes the request\'s dryRun — true means the cache was not actually touched.'),
   results: z.array(PatchResultSchema).describe('One result per input operation, in the same order.'),
   collected: z.array(z.string()).describe('Cache keys removed by the trailing `gc()`, when it ran.'),
+  trace: TraceExportSchema.optional().describe('Performance telemetry for this call.'),
 });
 
 // ---------------------------------------------------------------------------
@@ -238,6 +283,7 @@ export const DiagnoseCacheGraphOutputSchema = z.object({
     .describe('Mechanically-derived fixes for the fixable findings, ready to pass to patch_cache as-is.'),
   /** One entry per node that spoke, in visit order. */
   narration: z.array(z.string()),
+  trace: TraceExportSchema.optional().describe('Performance telemetry for this call.'),
 });
 
 // ---------------------------------------------------------------------------

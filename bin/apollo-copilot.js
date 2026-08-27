@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { startStdioServer, runInspectDanglingRefs } from '../dist/index.js';
+import { startStdioServer, runInspectDanglingRefs, Tracer, formatTraceSummary } from '../dist/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,7 +53,8 @@ function printDiagnostic(result) {
 
   // Stats header
   console.log(`Entities: ${stats.entityCount} | Refs: ${stats.refCount} | ` +
-              `Dangling: ${stats.danglingCount} | Unreachable: ${stats.unreachableCount}\n`);
+              `Dangling: ${stats.danglingCount} | Unreachable: ${stats.unreachableCount} | ` +
+              `Identity risk: ${stats.identityRiskCount}\n`);
 
   if (findings.length === 0) {
     console.log('✓ Cache is clean: no findings.\n');
@@ -68,7 +69,7 @@ function printDiagnostic(result) {
   }
 
   // Print each kind
-  const kinds = ['ORPHANED_REF', 'DANGLING_REF', 'UNREACHABLE_ENTITY', 'MISSING_TYPENAME', 'MISSING_ID'];
+  const kinds = ['ORPHANED_REF', 'DANGLING_REF', 'UNREACHABLE_ENTITY', 'MISSING_TYPENAME', 'MISSING_ID', 'UNSCOPED_IDENTITY_FIELD'];
   for (const kind of kinds) {
     if (!byKind[kind]) continue;
 
@@ -79,6 +80,7 @@ function printDiagnostic(result) {
       'UNREACHABLE_ENTITY': '🗑',
       'MISSING_TYPENAME': '❌',
       'MISSING_ID': '❌',
+      'UNSCOPED_IDENTITY_FIELD': '🔓',
     }[kind] || '?';
 
     console.log(`${icon}  ${kind} (${group.length})`);
@@ -112,8 +114,15 @@ async function main() {
 
     try {
       const cache = await readCacheSnapshot(arg);
-      const result = runInspectDanglingRefs({ cache });
+      const tracer = new Tracer();
+      const result = tracer.measure(
+        'inspectDanglingRefs',
+        () => runInspectDanglingRefs({ cache, includeIdentityRisk: true }),
+        { entityCount: (r) => r.findings.length },
+      );
       printDiagnostic(result);
+      console.log(formatTraceSummary(tracer.export()));
+      console.log();
     } catch (err) {
       console.error('[apollo-copilot] inspect failed:', err.message);
       process.exit(1);

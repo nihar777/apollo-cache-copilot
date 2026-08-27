@@ -130,6 +130,7 @@ describe('e2e: diagnose -> patch -> re-inspect', () => {
         'MISSING_ID Post:1.metrics',
         'UNREACHABLE_ENTITY Post:900',
         'UNREACHABLE_ENTITY Comment:901',
+        'UNSCOPED_IDENTITY_FIELD ROOT_QUERY.currentUser',
       ].sort(),
     );
 
@@ -146,8 +147,8 @@ describe('e2e: diagnose -> patch -> re-inspect', () => {
 
     // inspector -> reasoner -> patcher each spoke once.
     expect(diagnosis.narration).toHaveLength(3);
-    expect(diagnosis.narration[0]).toContain('9 findings');
-    expect(diagnosis.narration[1]).toContain('Skipped 3 unpatchable findings');
+    expect(diagnosis.narration[0]).toContain('10 findings');
+    expect(diagnosis.narration[1]).toContain('Skipped 4 unpatchable findings');
     expect(diagnosis.narration[2]).toContain('Ready to apply 6 operations');
 
     // --- 2. Patch ----------------------------------------------------------
@@ -169,6 +170,7 @@ describe('e2e: diagnose -> patch -> re-inspect', () => {
     const after = runInspectDanglingRefs({
       cache: patched.cache,
       includeNormalizationGaps: false,
+      includeIdentityRisk: false,
     });
 
     expect(after.findings).toEqual([]);
@@ -178,7 +180,7 @@ describe('e2e: diagnose -> patch -> re-inspect', () => {
     // The query-side gaps are still there, unchanged — nothing in the cache
     // could have fixed them, so a patcher that "fixed" them would be lying.
     const gapsBefore = diagnosis.findings.filter(isGap).map(key).sort();
-    const gapsAfter = runInspectDanglingRefs({ cache: patched.cache })
+    const gapsAfter = runInspectDanglingRefs({ cache: patched.cache, includeIdentityRisk: false })
       .findings.map(key)
       .sort();
 
@@ -190,7 +192,11 @@ describe('e2e: diagnose -> patch -> re-inspect', () => {
     // the pass was a fixed point, not the first step of a loop.
     const rediagnosis = await runDiagnoseCacheGraph({ cache: patched.cache });
     expect(rediagnosis.proposedPatches).toEqual([]);
-    expect(rediagnosis.findings.every(isGap)).toBe(true);
+    // Everything left over is unpatchable-by-design (query/fragment gaps, the
+    // identity-scoping flag) — none of it is a repairable ORPHANED_REF/UNREACHABLE_ENTITY.
+    expect(rediagnosis.findings.some((f) => f.kind === 'ORPHANED_REF' || f.kind === 'UNREACHABLE_ENTITY')).toBe(
+      false,
+    );
   });
 
   it('leaves the input snapshot untouched', async () => {

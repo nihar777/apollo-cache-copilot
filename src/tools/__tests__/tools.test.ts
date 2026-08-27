@@ -14,6 +14,7 @@ import { ZodError } from 'zod';
 
 import {
   fixtures,
+  identityRiskField,
   orphanedPointer,
   type ExpectedFinding,
 } from '../../__mocks__/sampleCacheState.js';
@@ -63,7 +64,9 @@ describe('InspectDanglingRefsInputSchema', () => {
 
     expect(args.includeUnreachable).toBe(true);
     expect(args.includeNormalizationGaps).toBe(true);
+    expect(args.includeIdentityRisk).toBe(false);
     expect(args.rootIds).toBeUndefined();
+    expect(args.identityFieldNames).toBeUndefined();
   });
 
   it('keeps explicit values over defaults', () => {
@@ -72,6 +75,8 @@ describe('InspectDanglingRefsInputSchema', () => {
       rootIds: ['ROOT_QUERY'],
       includeUnreachable: false,
       includeNormalizationGaps: false,
+      includeIdentityRisk: false,
+      identityFieldNames: ['whoami'],
     });
 
     expect(args).toEqual({
@@ -79,6 +84,8 @@ describe('InspectDanglingRefsInputSchema', () => {
       rootIds: ['ROOT_QUERY'],
       includeUnreachable: false,
       includeNormalizationGaps: false,
+      includeIdentityRisk: false,
+      identityFieldNames: ['whoami'],
     });
   });
 
@@ -238,6 +245,7 @@ describe('PatchCacheInputSchema', () => {
       operations: [{ type: 'evict', id: 'Post:999', broadcast: true }],
       gc: false,
       dryRun: false,
+      approved: false,
     });
   });
 
@@ -297,6 +305,43 @@ describe('inspectDanglingRefs', () => {
     expect(stats.entityCount).toBe(Object.keys(orphanedPointer.cache).length);
     expect(stats.danglingCount).toBe(2);
     expect(stats.unreachableCount).toBe(1);
+    expect(stats.identityRiskCount).toBe(0);
+  });
+
+  describe('identity risk', () => {
+    it('is off by default', () => {
+      const { findings, stats } = inspectDanglingRefs({ cache: identityRiskField.cache });
+
+      expect(findings).toEqual([]);
+      expect(stats.identityRiskCount).toBe(0);
+    });
+
+    it('flags a ROOT_QUERY field matching the default identity names when opted in', () => {
+      const { findings, stats } = inspectDanglingRefs({
+        cache: identityRiskField.cache,
+        includeIdentityRisk: true,
+      });
+
+      expect(comparable(findings)).toEqual(normalizeExpected(identityRiskField.expectedFindings));
+      expect(stats.identityRiskCount).toBe(1);
+    });
+
+    it('matches only names in a custom identityFieldNames list', () => {
+      const stillDefault = inspectDanglingRefs({
+        cache: identityRiskField.cache,
+        includeIdentityRisk: true,
+        identityFieldNames: ['whoami'],
+      });
+      expect(stillDefault.findings).toEqual([]);
+
+      const custom = inspectDanglingRefs({
+        cache: { ROOT_QUERY: { __typename: 'Query', whoami: { __ref: 'User:9' } }, 'User:9': { __typename: 'User', id: '9' } },
+        includeIdentityRisk: true,
+        identityFieldNames: ['whoami'],
+      });
+      expect(custom.stats.identityRiskCount).toBe(1);
+      expect(custom.findings[0]).toMatchObject({ kind: 'UNSCOPED_IDENTITY_FIELD', path: 'ROOT_QUERY.whoami' });
+    });
   });
 });
 

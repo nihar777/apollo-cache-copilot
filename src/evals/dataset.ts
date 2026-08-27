@@ -2,7 +2,7 @@
  * Day 8 eval dataset — serialized `InMemoryCache` snapshots covering the
  * defect classes `inspectDanglingRefs` / `cacheAgentGraph` claim to catch:
  * clean caches, dangling refs, unreachable entities, reference cycles,
- * unkeyable inline objects, and mixes of all four.
+ * unkeyable inline objects, unscoped identity fields, and mixes of all five.
  *
  * Each case's `expectedFindingCounts` is a hand-traced result of running the
  * detector's actual algorithm against `cache` — not a guess. The runner
@@ -21,7 +21,8 @@ export type EvalCategory =
   | 'circular'
   | 'unkeyable'
   | 'mixed'
-  | 'edge';
+  | 'edge'
+  | 'identity';
 
 export interface EvalCase {
   name: string;
@@ -50,7 +51,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'clean',
     description: 'One valid ref from ROOT_QUERY to a well-formed entity.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', viewer: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1', name: 'Alice' },
     },
     expectedFindingCounts: {},
@@ -144,7 +145,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'dangling',
     description: 'One entity with two separate fields each dangling — merge test for the reasoner.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': {
         __typename: 'User',
         id: '1',
@@ -178,7 +179,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unreachable',
     description: 'A valid entity no root path reaches.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1', name: 'A' },
       'User:2': { __typename: 'User', id: '2', name: 'B' },
     },
@@ -189,7 +190,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unreachable',
     description: 'An unreachable entity that itself validly refs another unreachable entity.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1' },
       'User:3': { __typename: 'User', id: '3', friend: ref('User:4') },
       'User:4': { __typename: 'User', id: '4' },
@@ -201,7 +202,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unreachable',
     description: 'Unreachable entity references a reachable one — eviction must not cascade.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1', name: 'A' },
       'Draft:1': { __typename: 'Draft', id: '1', author: ref('User:1') },
     },
@@ -266,7 +267,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'circular',
     description: 'An entity that refs itself — valid, reachable, no findings.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1', bestFriend: ref('User:1') },
     },
     expectedFindingCounts: {},
@@ -280,7 +281,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unkeyable',
     description: 'Inline object has __typename but no id/_id.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': {
         __typename: 'User',
         id: '1',
@@ -294,7 +295,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unkeyable',
     description: 'Inline object has an id but no __typename.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': {
         __typename: 'User',
         id: '1',
@@ -308,7 +309,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unkeyable',
     description: 'Inline object has neither __typename nor id — fully unkeyable.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1', geo: { lat: 40.7, lng: -74.0 } },
     },
     expectedFindingCounts: { MISSING_TYPENAME: 1, MISSING_ID: 1 },
@@ -318,7 +319,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'unkeyable',
     description: 'Unkeyable object nested three levels inside a well-formed entity.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': {
         __typename: 'User',
         id: '1',
@@ -340,7 +341,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'mixed',
     description: 'One dangling ref and one unrelated unreachable entity in the same cache.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': { __typename: 'User', id: '1', avatar: ref('Image:1') },
       'Order:99': { __typename: 'Order', id: '99' },
     },
@@ -351,7 +352,7 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'mixed',
     description: 'Dangling ref + unkeyable inline object + unreachable entity, all at once.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1') },
       'User:1': {
         __typename: 'User',
         id: '1',
@@ -404,9 +405,33 @@ export const EVAL_CASES: EvalCase[] = [
     category: 'edge',
     description: 'A dangling ref whose key is one character off from a real entity — no fuzzy matching.',
     cache: {
-      ROOT_QUERY: { __typename: 'Query', me: ref('User:1'), ghost: ref('User:1x') },
+      ROOT_QUERY: { __typename: 'Query', entity: ref('User:1'), ghost: ref('User:1x') },
       'User:1': { __typename: 'User', id: '1', name: 'Real' },
     },
     expectedFindingCounts: { ORPHANED_REF: 1 },
+  },
+
+  // ---------------------------------------------------------------------
+  // identity
+  // ---------------------------------------------------------------------
+  {
+    name: 'identity-current-user-field',
+    category: 'identity',
+    description: 'ROOT_QUERY.me resolves cleanly, but the field name carries no session/identity in its key.',
+    cache: {
+      ROOT_QUERY: { __typename: 'Query', me: ref('User:1') },
+      'User:1': { __typename: 'User', id: '1', name: 'A' },
+    },
+    expectedFindingCounts: { UNSCOPED_IDENTITY_FIELD: 1 },
+  },
+  {
+    name: 'identity-field-with-args',
+    category: 'identity',
+    description: 'currentUser(...) with serialized args — arg suffix must be stripped before name matching.',
+    cache: {
+      ROOT_QUERY: { __typename: 'Query', 'currentUser({"locale":"en"})': ref('User:1') },
+      'User:1': { __typename: 'User', id: '1', name: 'A' },
+    },
+    expectedFindingCounts: { UNSCOPED_IDENTITY_FIELD: 1 },
   },
 ];

@@ -37,6 +37,9 @@ export {
   PatchCacheMcpOutputSchema,
   DiagnoseCacheGraphInputSchema,
   DiagnoseCacheGraphOutputSchema,
+  // Telemetry
+  TraceEventSchema,
+  TraceExportSchema,
   // Inferred types
   type Finding,
   type FindingKind,
@@ -58,6 +61,44 @@ export {
   type DiagnoseCacheGraphInput,
   type DiagnoseCacheGraphOutput,
 } from './schemas/tools.js';
+
+// ---------------------------------------------------------------------------
+// Security guardrails
+// ---------------------------------------------------------------------------
+
+export {
+  GuardrailError,
+  MAX_INPUT_DEPTH,
+  REDACTED,
+  KNOWN_TOOLS,
+  KNOWN_OPERATION_TYPES,
+  KNOWN_PATCH_ACTIONS,
+  TOOL_ALLOWLIST_ENV,
+  ACTION_ALLOWLIST_ENV,
+  assertSafeInput,
+  assertToolAllowed,
+  assertOperationsAllowed,
+  guardToolInput,
+  redactSecrets,
+  redactString,
+  type GuardrailCode,
+  type KnownTool,
+  type SanitizeOptions,
+} from './security/guardrails.js';
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+
+export {
+  Tracer,
+  getActiveTracer,
+  withTracer,
+  formatTraceSummary,
+  type StepStatus,
+  type TraceEvent,
+  type TraceExport,
+} from './telemetry/tracer.js';
 
 // ---------------------------------------------------------------------------
 // Agent state and annotations

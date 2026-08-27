@@ -37,12 +37,15 @@ import {
   type InspectDanglingRefsOutput,
   type PatchCacheMcpOutput,
 } from '../schemas/tools.js';
-import { compareQueryToCache } from '../tools/compareQueryToCache.js';
+import { assertHumanApproved, guardToolInput, redactSecrets, wrapUntrusted } from '../security/guardrails.js';
 import { inspectDanglingRefs } from '../tools/inspectDanglingRefs.js';
 import { patchCache } from '../tools/patchCache.js';
+import { Tracer, withTracer } from '../telemetry/tracer.js';
 
 export const SERVER_NAME = 'apollo-cache-copilot';
-export const SERVER_VERSION = '1.0.0';
+// Duplicated from package.json — importing it would break `rootDir: src`.
+// `integration.test.ts` asserts the two agree, so a bump that misses one fails.
+export const SERVER_VERSION = '1.1.0';
 
 // ---------------------------------------------------------------------------
 // Result shaping
@@ -53,12 +56,21 @@ export const SERVER_VERSION = '1.0.0';
  *
  * MCP clients that don't understand `structuredContent` still get the JSON in
  * `content`, so the tool degrades to something usable rather than to nothing.
+ *
+ * The JSON block is wrapped in `<user_input>` boundary markers: it can embed
+ * attacker-controlled substrings verbatim (a finding's `path`, the graph's
+ * narration — both quote store keys straight out of the snapshot), and this
+ * is the text an MCP client's model actually reads back as context. The
+ * marker lets that model tell "data to inspect" from "instructions to
+ * follow". `summary` is always template text (counts and enum names only,
+ * see `findingsSummary`) so it's left unwrapped. Exported so tests can assert
+ * the wrapping without standing up a transport.
  */
-function result<T>(summary: string, structured: T) {
+export function buildToolResult<T>(summary: string, structured: T) {
   return {
     content: [
       { type: 'text' as const, text: summary },
-      { type: 'text' as const, text: JSON.stringify(structured, null, 2) },
+      { type: 'text' as const, text: wrapUntrusted(JSON.stringify(structured, null, 2)) },
     ],
     structuredContent: structured as Record<string, unknown>,
   };
@@ -79,7 +91,11 @@ function findingsSummary(findings: Finding[]): string {
 // ---------------------------------------------------------------------------
 
 export function runInspectDanglingRefs(args: unknown): InspectDanglingRefsOutput {
-  return inspectDanglingRefs(args);
+  guardToolInput('inspect_dangling_refs', args);
+  // Findings embed store keys verbatim (`me({"authToken":"..."})`), and those
+  // strings are what a model reads. Stats are numbers; nothing to scrub there.
+  const output = inspectDanglingRefs(args);
+  return { ...output, findings: redactSecrets(output.findings) };
 }
 
 export function runCompareQueryToCache(args: unknown): CompareQueryToCacheOutput {
@@ -94,7 +110,12 @@ export function runCompareQueryToCache(args: unknown): CompareQueryToCacheOutput
  * `canRead` / `isReference` helpers, and only Apollo can supply those.
  */
 export function runPatchCache(args: unknown): PatchCacheMcpOutput {
+  // Ahead of the parse: `cache.restore()` below is an assignment site, and a
+  // `__proto__` key survives `JSON.parse` as a real own property.
+  guardToolInput('patch_cache', args);
+
   const parsed = PatchCacheMcpInputSchema.parse(args);
+  assertHumanApproved(parsed.operations, parsed.approved, parsed.dryRun);
 
   const cache = new InMemoryCache();
   // Zod guarantees "object of objects" but not Apollo's recursive `StoreValue`,
@@ -102,20 +123,46 @@ export function runPatchCache(args: unknown): PatchCacheMcpOutput {
   // cast is the seam between the two; the parse above is what actually guards.
   cache.restore(parsed.cache as NormalizedCacheObject);
 
+  const tracer = new Tracer();
   // `patchCache` re-parses and ignores the extra `cache` key.
-  const output = patchCache(cache, parsed);
+  const output = tracer.measure('patchCache', () => patchCache(cache, parsed), {
+    entityCount: (r) => r.results.length,
+  });
 
-  return { ...output, cache: cache.extract() as PatchCacheMcpOutput['cache'] };
+  // `cache` and the echoed `operations` go back verbatim: that store is the
+  // caller's own, bound for `cache.restore()`, and a redacted value there is
+  // data corruption rather than a safety win. Per-op `error` strings and the
+  // trace are derived text, so those get scrubbed.
+  return {
+    ...output,
+    results: output.results.map((r) =>
+      r.error === undefined ? r : { ...r, error: redactSecrets(r.error) },
+    ),
+    cache: cache.extract() as PatchCacheMcpOutput['cache'],
+    trace: redactSecrets(tracer.export()),
+  };
 }
 
 export async function runDiagnoseCacheGraph(args: unknown): Promise<DiagnoseCacheGraphOutput> {
-  const { cache } = DiagnoseCacheGraphInputSchema.parse(args);
-  const state = await cacheAgentGraph.invoke({ cacheState: cache as NormalizedCacheObject });
+  guardToolInput('diagnose_cache_graph', args);
 
+  const { cache } = DiagnoseCacheGraphInputSchema.parse(args);
+
+  // `withTracer` puts a fresh tracer on the async context so `inspectorNode` /
+  // `reasonerNode` / `patcherNode` — invoked internally by `cacheAgentGraph`,
+  // not by us — can record their own spans via `getActiveTracer()`.
+  const { result: state, trace } = await withTracer(() =>
+    cacheAgentGraph.invoke({ cacheState: cache as NormalizedCacheObject }),
+  );
+
+  // Findings, narration and trace all quote store keys and field names back at
+  // the caller; `proposedPatches` is the machine-readable plan that has to feed
+  // `patch_cache` unaltered, so it is left alone.
   return {
-    findings: state.findings,
+    findings: redactSecrets(state.findings),
     proposedPatches: state.proposedPatches,
-    narration: state.messages.map((m) => String(m.content)),
+    narration: redactSecrets(state.messages.map((m) => String(m.content))),
+    trace: redactSecrets(trace),
   };
 }
 
@@ -142,7 +189,7 @@ export function createServer(): McpServer {
     },
     (args) => {
       const output = runInspectDanglingRefs(args);
-      return result(findingsSummary(output.findings), output);
+      return buildToolResult(findingsSummary(output.findings), output);
     },
   );
 
@@ -175,7 +222,11 @@ export function createServer(): McpServer {
         'the patched store. Set dryRun to validate the operations without changing anything.',
       inputSchema: PatchCacheMcpInputSchema.shape,
       outputSchema: PatchCacheMcpOutputSchema.shape,
-      annotations: { readOnlyHint: false, idempotentHint: true },
+      // destructiveHint: the platform-native MCP signal well-behaved clients
+      // (Claude Desktop, Claude Code) use to gate a tool call behind their own
+      // human-approval UI — on top of, not instead of, the server-side
+      // APOLLO_COPILOT_REQUIRE_APPROVAL gate in assertHumanApproved.
+      annotations: { readOnlyHint: false, idempotentHint: true, destructiveHint: true },
     },
     (args) => {
       const output = runPatchCache(args);
@@ -189,7 +240,7 @@ export function createServer(): McpServer {
           (output.collected.length ? `; gc collected ${output.collected.length}` : '') +
           '.';
 
-      return result(summary, output);
+      return buildToolResult(summary, output);
     },
   );
 
@@ -211,7 +262,7 @@ export function createServer(): McpServer {
         `${findingsSummary(output.findings)} ` +
         `${output.proposedPatches.length} patch operation(s) proposed.`;
 
-      return result(summary, output);
+      return buildToolResult(summary, output);
     },
   );
 

@@ -14,6 +14,7 @@ import { END, START, StateGraph } from '@langchain/langgraph';
 
 import { CacheAgentAnnotation, type CacheAgentState, type CacheAgentUpdate } from './state.js';
 import { inspectDanglingRefs } from '../tools/inspectDanglingRefs.js';
+import { getActiveTracer } from '../telemetry/tracer.js';
 import type { Finding, PatchOperation } from '../schemas/tools.js';
 
 // ---------------------------------------------------------------------------
@@ -58,16 +59,22 @@ function summarize(findings: Finding[]): string {
   if (by('MISSING_TYPENAME'))
     parts.push(count(by('MISSING_TYPENAME'), 'missing __typename', 'missing __typenames'));
   if (by('MISSING_ID')) parts.push(count(by('MISSING_ID'), 'missing id', 'missing ids'));
+  if (by('UNSCOPED_IDENTITY_FIELD'))
+    parts.push(count(by('UNSCOPED_IDENTITY_FIELD'), 'identity-scoped field flagged', 'identity-scoped fields flagged'));
 
   return `${count(findings.length, 'finding', 'findings')}: ${parts.join(', ')}.`;
 }
 
 export function inspectorNode(state: CacheAgentState): CacheAgentUpdate {
-  const { findings } = inspectDanglingRefs({ cache: state.cacheState });
+  const { findings } = getActiveTracer().measure(
+    'inspector',
+    () => inspectDanglingRefs({ cache: state.cacheState, includeIdentityRisk: true }),
+    { entityCount: (r) => r.findings.length },
+  );
   return { findings, messages: [new AIMessage(summarize(findings))] };
 }
 
-export function reasonerNode(state: CacheAgentState): CacheAgentUpdate {
+function reason(state: CacheAgentState): CacheAgentUpdate {
   /** entityKey -> merged field patches, so one entity yields one `modify`. */
   const modifies = new Map<string, PatchOperation & { type: 'modify' }>();
   const evictKeys = new Set<string>();
@@ -99,9 +106,13 @@ export function reasonerNode(state: CacheAgentState): CacheAgentUpdate {
 
       // Unkeyable inline objects are a defect in the query/fragment, not in the
       // stored data. No cache mutation repairs them — evicting just re-fetches
-      // the same shape — so they are reported and left alone.
+      // the same shape — so they are reported and left alone. Unscoped
+      // identity fields are the same story from the other direction: the
+      // real fix (clearStore() at the identity boundary) is app code, not a
+      // cache mutation, so there's nothing here to propose either.
       case 'MISSING_TYPENAME':
       case 'MISSING_ID':
+      case 'UNSCOPED_IDENTITY_FIELD':
         skipped += 1;
         break;
     }
@@ -122,24 +133,37 @@ export function reasonerNode(state: CacheAgentState): CacheAgentUpdate {
         '.';
 
   const skipNote = skipped
-    ? ` Skipped ${count(skipped, 'unpatchable finding', 'unpatchable findings')} (MISSING_TYPENAME / MISSING_ID):` +
-      ' these are query or fragment defects and cannot be repaired by mutating the cache.'
+    ? ` Skipped ${count(skipped, 'unpatchable finding', 'unpatchable findings')}:` +
+      ' these are query/fragment or identity-scoping defects, not cache corruption, and cannot be repaired by' +
+      ' mutating the cache.'
     : '';
 
   return { proposedPatches, messages: [new AIMessage(narration + skipNote)] };
+}
+
+export function reasonerNode(state: CacheAgentState): CacheAgentUpdate {
+  return getActiveTracer().measure('reasoner', () => reason(state), {
+    entityCount: () => state.findings.length,
+  });
 }
 
 /**
  * Plans rather than applies: the graph only ever sees a serialized snapshot, so
  * the live `InMemoryCache` stays the caller's to patch via `patchCache`.
  */
-export function patcherNode(state: CacheAgentState): CacheAgentUpdate {
+function plan(state: CacheAgentState): CacheAgentUpdate {
   const targets = state.proposedPatches.map((op) => `${op.type} ${op.id}`).join(', ');
-  const plan = state.proposedPatches.length
+  const narration = state.proposedPatches.length
     ? `Ready to apply ${count(state.proposedPatches.length, 'operation', 'operations')} via patchCache: ${targets}.`
     : 'Nothing to apply.';
 
-  return { messages: [new AIMessage(plan)] };
+  return { messages: [new AIMessage(narration)] };
+}
+
+export function patcherNode(state: CacheAgentState): CacheAgentUpdate {
+  return getActiveTracer().measure('patcher', () => plan(state), {
+    entityCount: () => state.proposedPatches.length,
+  });
 }
 
 // ---------------------------------------------------------------------------

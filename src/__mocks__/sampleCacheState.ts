@@ -14,7 +14,7 @@ import type { NormalizedCacheObject } from '@apollo/client';
 
 /** What the analyzer is expected to report for a fixture. */
 export interface ExpectedFinding {
-  kind: 'ORPHANED_REF' | 'MISSING_TYPENAME' | 'MISSING_ID' | 'UNREACHABLE_ENTITY';
+  kind: 'ORPHANED_REF' | 'MISSING_TYPENAME' | 'MISSING_ID' | 'UNREACHABLE_ENTITY' | 'UNSCOPED_IDENTITY_FIELD';
   /** Dotted path from a cache root, e.g. `User:2.avatar`. */
   path: string;
   /** The dangling cache key, for ORPHANED_REF only. */
@@ -175,11 +175,35 @@ export const missingTypenameOrId: CacheFixture = {
   ],
 };
 
-export const fixtures: CacheFixture[] = [
-  healthyEntity,
-  orphanedPointer,
-  missingTypenameOrId,
-];
+// ---------------------------------------------------------------------------
+// 4. Unscoped identity field — ROOT_QUERY.me with no session in the key
+// ---------------------------------------------------------------------------
+
+export const identityRiskField: CacheFixture = {
+  name: 'identityRiskField',
+  description:
+    'ROOT_QUERY.me resolves cleanly to a valid, fully-normalized User — no corruption. Flagged anyway because ' +
+    'the cache key carries no session/identity, so an identity switch (impersonation, account switch) without ' +
+    'a full cache reset can leak this value into the next session.',
+  cache: {
+    ROOT_QUERY: {
+      __typename: 'Query',
+      me: { __ref: 'User:4' },
+    },
+    'User:4': {
+      __typename: 'User',
+      id: '4',
+      name: 'Katherine Johnson',
+    },
+  },
+  expectedFindings: [{ kind: 'UNSCOPED_IDENTITY_FIELD', path: 'ROOT_QUERY.me' }],
+};
+
+// `identityRiskField` is deliberately not in `fixtures` — that check is
+// off by default (opt-in only), so the default-options loop test below
+// would fail against it. It's exercised directly in the 'identity risk'
+// describe block instead, with `includeIdentityRisk: true` explicit.
+export const fixtures: CacheFixture[] = [healthyEntity, orphanedPointer, missingTypenameOrId];
 
 export const fixturesByName: Record<string, CacheFixture> = {
   healthyEntity,

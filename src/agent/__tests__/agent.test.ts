@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   healthyEntity,
+  identityRiskField,
   missingTypenameOrId,
   orphanedPointer,
   type ExpectedFinding,
@@ -101,7 +102,17 @@ describe('unpatchable findings', () => {
 
     const narration = result.messages.map((m) => String(m.content)).join('\n');
     expect(narration).toMatch(/Skipped/);
-    expect(narration).toMatch(/MISSING_TYPENAME/);
+    expect(result.findings.some((f) => f.kind === 'MISSING_TYPENAME')).toBe(true);
+  });
+
+  it('reports an unscoped identity field but proposes nothing', async () => {
+    const result = await cacheAgentGraph.invoke({ cacheState: identityRiskField.cache });
+
+    expect(comparable(result.findings)).toEqual(comparable(identityRiskField.expectedFindings));
+    expect(result.proposedPatches).toEqual([]);
+
+    const narration = result.messages.map((m) => String(m.content)).join('\n');
+    expect(narration).toMatch(/Skipped/);
   });
 });
 

@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 
@@ -65,7 +66,12 @@ describe('integration: public API exports', () => {
   it('exports MCP server', async () => {
     const api = await import('../../dist/index.js');
     expect(api.SERVER_NAME).toBe('apollo-cache-copilot');
-    expect(api.SERVER_VERSION).toBe('1.0.0');
+    // Against package.json rather than a literal: pinning the literal is what
+    // let SERVER_VERSION sit at 1.0.0 through two releases without failing.
+    const pkg = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
+    ) as { version: string };
+    expect(api.SERVER_VERSION).toBe(pkg.version);
     expect(api.runInspectDanglingRefs).toBeDefined();
     expect(api.runCompareQueryToCache).toBeDefined();
     expect(api.runPatchCache).toBeDefined();

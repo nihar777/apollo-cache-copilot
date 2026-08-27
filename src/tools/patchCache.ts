@@ -11,6 +11,7 @@
 import type { ApolloCache } from '@apollo/client';
 import type { Modifier } from '@apollo/client/cache/index.js';
 
+import { assertSafeInput } from '../security/guardrails.js';
 import {
   PatchCacheInputSchema,
   type FieldPatch,
@@ -83,6 +84,15 @@ function applyOperation(cache: ApolloCache<any>, op: PatchOperation): boolean {
 // ---------------------------------------------------------------------------
 
 export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheOutput {
+  // Guarded here, not only at the MCP boundary, because this is a public export
+  // and `fields[name] = toModifier(patch)` below assigns at a caller-supplied
+  // key. Only `operations` is walked: the MCP adapter passes its whole payload
+  // through, and re-walking a large snapshot it has already checked is wasted
+  // work on every patch call.
+  if (typeof input === 'object' && input !== null && 'operations' in input) {
+    assertSafeInput((input as { operations: unknown }).operations, { label: 'operations' });
+  }
+
   const args = PatchCacheInputSchema.parse(input);
 
   if (args.dryRun) {
