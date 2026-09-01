@@ -5,7 +5,7 @@
  *   - Zod schemas for tool inputs/outputs
  *   - Types for cache state and patches
  *   - The compiled LangGraph agent + state annotations
- *   - In-process tool functions (inspectDanglingRefs, patchCache)
+ *   - In-process tool functions (inspectDanglingRefs, compareQueryToCache, patchCache)
  *   - MCP server factory and stdio runner
  */
 
@@ -86,6 +86,7 @@ export {
 // ---------------------------------------------------------------------------
 
 export { inspectDanglingRefs } from './tools/inspectDanglingRefs.js';
+export { compareQueryToCache } from './tools/compareQueryToCache.js';
 export { patchCache } from './tools/patchCache.js';
 
 // ---------------------------------------------------------------------------
@@ -96,6 +97,7 @@ export {
   SERVER_NAME,
   SERVER_VERSION,
   runInspectDanglingRefs,
+  runCompareQueryToCache,
   runPatchCache,
   runDiagnoseCacheGraph,
   createServer,

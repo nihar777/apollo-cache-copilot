@@ -1,9 +1,9 @@
 /**
  * The stdio MCP server — the copilot's only remote surface.
  *
- * Three tools, each a thin adapter over work that already exists: the Day 2
- * inspector, the Day 2 patcher, and the Day 3 graph. The adapters do exactly
- * two things the in-process functions can't: they carry the cache snapshot
+ * Four tools, each a thin adapter over work that already exists: the Day 2
+ * inspector, query/cache comparator, Day 2 patcher, and the Day 3 graph. The
+ * adapters do exactly two things the in-process functions can't: they carry the cache snapshot
  * across the JSON boundary (a stdio server has no live `InMemoryCache`), and
  * they render results as both text and `structuredContent`, so a model reads
  * the summary while a program reads the data.
@@ -23,17 +23,21 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { cacheAgentGraph } from '../agent/graph.js';
 import {
+  CompareQueryToCacheInputSchema,
+  CompareQueryToCacheOutputSchema,
   DiagnoseCacheGraphInputSchema,
   DiagnoseCacheGraphOutputSchema,
   InspectDanglingRefsInputSchema,
   InspectDanglingRefsOutputSchema,
   PatchCacheMcpInputSchema,
   PatchCacheMcpOutputSchema,
+  type CompareQueryToCacheOutput,
   type DiagnoseCacheGraphOutput,
   type Finding,
   type InspectDanglingRefsOutput,
   type PatchCacheMcpOutput,
 } from '../schemas/tools.js';
+import { compareQueryToCache } from '../tools/compareQueryToCache.js';
 import { inspectDanglingRefs } from '../tools/inspectDanglingRefs.js';
 import { patchCache } from '../tools/patchCache.js';
 
@@ -76,6 +80,10 @@ function findingsSummary(findings: Finding[]): string {
 
 export function runInspectDanglingRefs(args: unknown): InspectDanglingRefsOutput {
   return inspectDanglingRefs(args);
+}
+
+export function runCompareQueryToCache(args: unknown): CompareQueryToCacheOutput {
+  return compareQueryToCache(args);
 }
 
 /**
@@ -135,6 +143,26 @@ export function createServer(): McpServer {
     (args) => {
       const output = runInspectDanglingRefs(args);
       return result(findingsSummary(output.findings), output);
+    },
+  );
+
+  server.registerTool(
+    'compare_query_to_cache',
+    {
+      title: 'Compare query to cache',
+      description:
+        'Run an Apollo query read against a serialized cache and report whether it is complete, ' +
+        'which fields were satisfied, and which paths were missing/dangling/not-normalized.',
+      inputSchema: CompareQueryToCacheInputSchema.shape,
+      outputSchema: CompareQueryToCacheOutputSchema.shape,
+      annotations: { readOnlyHint: true },
+    },
+    (args) => {
+      const output = runCompareQueryToCache(args);
+      const summary = output.complete
+        ? `Cache fully satisfies the query (${output.satisfiedFields.length} field path(s) satisfied).`
+        : `Cache miss: ${output.misses.length} missing field path(s), ${output.satisfiedFields.length} satisfied.`;
+      return result(summary, output);
     },
   );
 

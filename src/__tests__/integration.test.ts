@@ -58,6 +58,7 @@ describe('integration: public API exports', () => {
   it('exports tools', async () => {
     const api = await import('../../dist/index.js');
     expect(api.inspectDanglingRefs).toBeDefined();
+    expect(api.compareQueryToCache).toBeDefined();
     expect(api.patchCache).toBeDefined();
   });
 
@@ -66,6 +67,7 @@ describe('integration: public API exports', () => {
     expect(api.SERVER_NAME).toBe('apollo-cache-copilot');
     expect(api.SERVER_VERSION).toBe('1.0.0');
     expect(api.runInspectDanglingRefs).toBeDefined();
+    expect(api.runCompareQueryToCache).toBeDefined();
     expect(api.runPatchCache).toBeDefined();
     expect(api.runDiagnoseCacheGraph).toBeDefined();
     expect(api.createServer).toBeDefined();
