@@ -25,6 +25,7 @@ import {
   PatchOperationSchema,
 } from '../../schemas/tools.js';
 import { inspectDanglingRefs } from '../inspectDanglingRefs.js';
+import { compareQueryToCache } from '../compareQueryToCache.js';
 import { patchCache } from '../patchCache.js';
 
 /** Minimal cache that satisfies NormalizedCacheSchema. */
@@ -296,6 +297,89 @@ describe('inspectDanglingRefs', () => {
     expect(stats.entityCount).toBe(Object.keys(orphanedPointer.cache).length);
     expect(stats.danglingCount).toBe(2);
     expect(stats.unreachableCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// compareQueryToCache
+// ---------------------------------------------------------------------------
+
+describe('compareQueryToCache', () => {
+  it('returns complete=true with no misses when the cache satisfies the query', () => {
+    const output = compareQueryToCache({
+      cache: fixtures[0].cache,
+      query: `
+        query GetUser($id: ID!) {
+          user(id: $id) {
+            id
+            name
+            avatar { url }
+          }
+        }
+      `,
+      variables: { id: '1' },
+    });
+
+    expect(output.complete).toBe(true);
+    expect(output.misses).toEqual([]);
+    expect(output.satisfiedFields).toEqual(expect.arrayContaining(['user', 'user.id', 'user.name', 'user.avatar']));
+  });
+
+  it('reports dangling refs and missing fields with stable path + reason', () => {
+    const output = compareQueryToCache({
+      cache: orphanedPointer.cache,
+      query: `
+        query GetUser($id: ID!) {
+          user(id: $id) {
+            id
+            avatar { url }
+            posts { id title }
+            email
+          }
+        }
+      `,
+      variables: { id: '2' },
+    });
+
+    expect(output.complete).toBe(false);
+    expect(output.misses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entityId: 'User:2',
+          path: 'user.avatar',
+          reason: 'DANGLING_REF',
+        }),
+        expect.objectContaining({
+          entityId: 'User:2',
+          path: 'user.email',
+          reason: 'MISSING_FIELD',
+        }),
+      ]),
+    );
+  });
+
+  it('classifies missing fields on inline non-entity objects as NOT_NORMALIZED', () => {
+    const output = compareQueryToCache({
+      cache: {
+        ROOT_QUERY: { __typename: 'Query', me: { __ref: 'User:1' } },
+        'User:1': {
+          __typename: 'User',
+          id: '1',
+          profile: { bio: 'hi' },
+        },
+      },
+      query: '{ me { profile { bio location } } }',
+    });
+
+    expect(output.complete).toBe(false);
+    expect(output.misses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'me.profile.location',
+          reason: 'NOT_NORMALIZED',
+        }),
+      ]),
+    );
   });
 });
 

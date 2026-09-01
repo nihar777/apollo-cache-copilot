@@ -28,17 +28,18 @@ import {
   orphanedPointer,
 } from '../../__mocks__/sampleCacheState.js';
 import {
+  CompareQueryToCacheOutputSchema,
   DiagnoseCacheGraphOutputSchema,
   InspectDanglingRefsOutputSchema,
   PatchCacheMcpOutputSchema,
 } from '../../schemas/tools.js';
 import { inspectDanglingRefs } from '../../tools/inspectDanglingRefs.js';
-import { createServer, runPatchCache, SERVER_NAME } from '../server.js';
+import { createServer, runCompareQueryToCache, runPatchCache, SERVER_NAME } from '../server.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const BIN = path.join(REPO_ROOT, 'bin/apollo-copilot-mcp.js');
 
-const TOOL_NAMES = ['inspect_dangling_refs', 'patch_cache', 'diagnose_cache_graph'];
+const TOOL_NAMES = ['inspect_dangling_refs', 'compare_query_to_cache', 'patch_cache', 'diagnose_cache_graph'];
 
 /** A connected client plus the server it is wired to, over InMemoryTransport. */
 async function connectInMemory() {
@@ -106,12 +107,38 @@ describe('runPatchCache', () => {
   });
 });
 
+describe('runCompareQueryToCache', () => {
+  it('returns structured cache misses from query reads', () => {
+    const output = runCompareQueryToCache({
+      cache: orphanedPointer.cache,
+      query: `
+        query GetUser($id: ID!) {
+          user(id: $id) {
+            id
+            avatar { url }
+            email
+          }
+        }
+      `,
+      variables: { id: '2' },
+    });
+
+    expect(output.complete).toBe(false);
+    expect(output.misses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'user.avatar', reason: 'DANGLING_REF' }),
+        expect.objectContaining({ path: 'user.email', reason: 'MISSING_FIELD' }),
+      ]),
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Integration: InMemory transport
 // ---------------------------------------------------------------------------
 
 describe('tool discovery over InMemory', () => {
-  it('lists exactly the three tools, each with an object input schema', async () => {
+  it('lists exactly the tools, each with an object input schema', async () => {
     const { client } = await connectInMemory();
     const { tools } = await client.listTools();
 
@@ -137,8 +164,52 @@ describe('tool discovery over InMemory', () => {
     const byName = new Map(tools.map((t) => [t.name, t]));
 
     expect(byName.get('inspect_dangling_refs')?.annotations?.readOnlyHint).toBe(true);
+    expect(byName.get('compare_query_to_cache')?.annotations?.readOnlyHint).toBe(true);
     expect(byName.get('diagnose_cache_graph')?.annotations?.readOnlyHint).toBe(true);
     expect(byName.get('patch_cache')?.annotations?.readOnlyHint).toBe(false);
+  });
+});
+
+describe('compare_query_to_cache over InMemory', () => {
+  it('returns complete=true and no misses for satisfiable reads', async () => {
+    const { client } = await connectInMemory();
+
+    const result = await client.callTool({
+      name: 'compare_query_to_cache',
+      arguments: {
+        cache: healthyEntity.cache,
+        query: 'query GetUser($id: ID!) { user(id: $id) { id name avatar { url } } }',
+        variables: { id: '1' },
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = CompareQueryToCacheOutputSchema.parse(structured(result));
+    expect(output.complete).toBe(true);
+    expect(output.misses).toEqual([]);
+  });
+
+  it('reports misses and reasons when reads are incomplete', async () => {
+    const { client } = await connectInMemory();
+
+    const result = await client.callTool({
+      name: 'compare_query_to_cache',
+      arguments: {
+        cache: orphanedPointer.cache,
+        query: 'query GetUser($id: ID!) { user(id: $id) { id avatar { url } email } }',
+        variables: { id: '2' },
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = CompareQueryToCacheOutputSchema.parse(structured(result));
+    expect(output.complete).toBe(false);
+    expect(output.misses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'user.avatar', reason: 'DANGLING_REF' }),
+        expect.objectContaining({ path: 'user.email', reason: 'MISSING_FIELD' }),
+      ]),
+    );
   });
 });
 
@@ -319,7 +390,7 @@ describe('the built binary over Stdio', () => {
     return client;
   }
 
-  it('completes the handshake and lists the three tools', async () => {
+  it('completes the handshake and lists the tools', async () => {
     const client = await connectStdio();
 
     expect(client.getServerVersion()?.name).toBe(SERVER_NAME);
