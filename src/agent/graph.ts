@@ -15,7 +15,11 @@ import { END, START, StateGraph } from '@langchain/langgraph';
 import { CacheAgentAnnotation, type CacheAgentState, type CacheAgentUpdate } from './state.js';
 import { inspectDanglingRefs } from '../tools/inspectDanglingRefs.js';
 import { getActiveTracer } from '../telemetry/tracer.js';
+import { memoryStore } from '../memory/store.js';
 import type { Finding, PatchOperation } from '../schemas/tools.js';
+
+/** Findings retrieved from memory this run — cap keeps the reconcile step off the whole store. */
+const MEMORY_RETRIEVAL_BUDGET = 10;
 
 // ---------------------------------------------------------------------------
 // Path parsing
@@ -37,6 +41,17 @@ function parseFieldPath(path: string): { entityKey: string; field: string } | un
   while (segments.length > 1 && /^\d+$/.test(segments[segments.length - 1])) segments.pop();
 
   return { entityKey: path.slice(0, dot), field: segments.join('.') };
+}
+
+/** Entity key a finding's path belongs to — the path itself when it carries no field (e.g. `UNREACHABLE_ENTITY`). */
+function entityKeyOf(path: string): string {
+  const dot = path.indexOf('.');
+  return dot === -1 ? path : path.slice(0, dot);
+}
+
+/** Long-term memory key for one finding — kind + path, so distinct defects on the same entity don't collide. */
+function memoryKey(finding: Finding): string {
+  return `${finding.kind}:${finding.path}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +156,45 @@ function reason(state: CacheAgentState): CacheAgentUpdate {
   return { proposedPatches, messages: [new AIMessage(narration + skipNote)] };
 }
 
+/**
+ * Recall + conflict resolution. No-op when the caller didn't set `sessionId`
+ * (the default), so a plain `cacheAgentGraph.invoke({ cacheState })` behaves
+ * exactly as it did before memory existed.
+ *
+ * A retrieved finding only gets resurrected when its entity is entirely
+ * absent from this turn's `cacheState` — i.e. this snapshot never covered
+ * it, so memory is the only opinion available. Any entity the snapshot does
+ * cover is settled by the fresh inspection, even when that inspection found
+ * nothing there anymore: fresh, verified data always outranks a memory of a
+ * past turn.
+ */
+function reconcile(state: CacheAgentState): CacheAgentUpdate {
+  if (!state.sessionId) return {};
+
+  const freshEntityKeys = new Set(Object.keys(state.cacheState));
+  const retrieved = memoryStore.retrieveContext(state.sessionId, { maxItems: MEMORY_RETRIEVAL_BUDGET });
+
+  const recovered = retrieved
+    .map((r) => r.value as Finding)
+    .filter((f) => !freshEntityKeys.has(entityKeyOf(f.path)));
+
+  if (recovered.length === 0) return {};
+
+  return {
+    findings: [...state.findings, ...recovered],
+    messages: [
+      new AIMessage(
+        `Recovered ${count(recovered.length, 'finding', 'findings')} from memory for entities this snapshot ` +
+          'did not cover.',
+      ),
+    ],
+  };
+}
+
+export function reconcileNode(state: CacheAgentState): CacheAgentUpdate {
+  return getActiveTracer().measure('reconcile', () => reconcile(state));
+}
+
 export function reasonerNode(state: CacheAgentState): CacheAgentUpdate {
   return getActiveTracer().measure('reasoner', () => reason(state), {
     entityCount: () => state.findings.length,
@@ -166,6 +220,27 @@ export function patcherNode(state: CacheAgentState): CacheAgentUpdate {
   });
 }
 
+/**
+ * Commit this turn's findings to long-term memory (verified — they're fresh)
+ * and append the turn to the short-term ring buffer. No-op without a
+ * `sessionId`, same as `reconcile`.
+ */
+function commit(state: CacheAgentState): CacheAgentUpdate {
+  if (!state.sessionId) return {};
+
+  memoryStore.recordTurn(state.sessionId, { findings: state.findings, proposedPatches: state.proposedPatches });
+  for (const finding of state.findings) {
+    memoryStore.remember(state.sessionId, memoryKey(finding), finding, { verified: true });
+  }
+  return {};
+}
+
+export function commitNode(state: CacheAgentState): CacheAgentUpdate {
+  return getActiveTracer().measure('commit', () => commit(state), {
+    entityCount: () => state.findings.length,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Graph
 // ---------------------------------------------------------------------------
@@ -173,16 +248,22 @@ export function patcherNode(state: CacheAgentState): CacheAgentUpdate {
 export function buildCacheAgentGraph() {
   return new StateGraph(CacheAgentAnnotation)
     .addNode('inspector', inspectorNode)
+    .addNode('reconcile', reconcileNode)
     .addNode('reasoner', reasonerNode)
     .addNode('patcher', patcherNode)
+    .addNode('commit', commitNode)
     .addEdge(START, 'inspector')
-    // A clean cache has nothing to reason about — skip straight to the end
+    .addEdge('inspector', 'reconcile')
+    // A clean cache has nothing to reason about — skip straight to commit
     // rather than burning a pass that can only produce an empty patch list.
-    .addConditionalEdges('inspector', (state: CacheAgentState) =>
-      state.findings.length === 0 ? END : 'reasoner',
+    // Memory can still add findings in `reconcile` (a stale entity this
+    // snapshot didn't cover), so the check runs after it, not before.
+    .addConditionalEdges('reconcile', (state: CacheAgentState) =>
+      state.findings.length === 0 ? 'commit' : 'reasoner',
     )
     .addEdge('reasoner', 'patcher')
-    .addEdge('patcher', END)
+    .addEdge('patcher', 'commit')
+    .addEdge('commit', END)
     .compile();
 }
 
