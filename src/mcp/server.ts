@@ -38,6 +38,7 @@ import {
   type PatchCacheMcpOutput,
 } from '../schemas/tools.js';
 import { assertHumanApproved, guardToolInput, redactSecrets, wrapUntrusted } from '../security/guardrails.js';
+import { compareQueryToCache } from '../tools/compareQueryToCache.js';
 import { inspectDanglingRefs } from '../tools/inspectDanglingRefs.js';
 import { patchCache } from '../tools/patchCache.js';
 import { Tracer, withTracer } from '../telemetry/tracer.js';
@@ -99,7 +100,11 @@ export function runInspectDanglingRefs(args: unknown): InspectDanglingRefsOutput
 }
 
 export function runCompareQueryToCache(args: unknown): CompareQueryToCacheOutput {
-  return compareQueryToCache(args);
+  guardToolInput('compare_query_to_cache', args);
+  // `misses` entries quote store keys and field paths back out of the cache,
+  // same shape as `inspectDanglingRefs`'s findings — same scrub.
+  const output = compareQueryToCache(args);
+  return { ...output, misses: redactSecrets(output.misses) };
 }
 
 /**
@@ -209,7 +214,7 @@ export function createServer(): McpServer {
       const summary = output.complete
         ? `Cache fully satisfies the query (${output.satisfiedFields.length} field path(s) satisfied).`
         : `Cache miss: ${output.misses.length} missing field path(s), ${output.satisfiedFields.length} satisfied.`;
-      return result(summary, output);
+      return buildToolResult(summary, output);
     },
   );
 

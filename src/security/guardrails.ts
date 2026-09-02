@@ -287,7 +287,12 @@ export function redactSecrets<T>(value: T, opts: SanitizeOptions = {}): T {
 // 3. Tool + operation allowlist
 // ---------------------------------------------------------------------------
 
-export const KNOWN_TOOLS = ['inspect_dangling_refs', 'patch_cache', 'diagnose_cache_graph'] as const;
+export const KNOWN_TOOLS = [
+  'inspect_dangling_refs',
+  'patch_cache',
+  'diagnose_cache_graph',
+  'compare_query_to_cache',
+] as const;
 export const KNOWN_OPERATION_TYPES = ['modify', 'evict'] as const;
 export const KNOWN_PATCH_ACTIONS = ['DELETE', 'INVALIDATE', 'SET', 'PRUNE_DANGLING_REFS'] as const;
 
@@ -325,8 +330,8 @@ export const KNOWN_ROLES = ['readonly', 'operator', 'admin'] as const;
 export type KnownRole = (typeof KNOWN_ROLES)[number];
 
 const ROLE_TOOLS: Record<KnownRole, readonly string[]> = {
-  readonly: ['inspect_dangling_refs', 'diagnose_cache_graph'],
-  operator: ['inspect_dangling_refs', 'diagnose_cache_graph', 'patch_cache'],
+  readonly: ['inspect_dangling_refs', 'diagnose_cache_graph', 'compare_query_to_cache'],
+  operator: ['inspect_dangling_refs', 'diagnose_cache_graph', 'compare_query_to_cache', 'patch_cache'],
   admin: KNOWN_TOOLS,
 };
 
