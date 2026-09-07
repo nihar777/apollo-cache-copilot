@@ -311,7 +311,17 @@ Restart Claude Desktop. The three tools appear under the tools menu.
 
 ### Cursor
 
-`.cursor/mcp.json` in the project (or `~/.cursor/mcp.json` for every project):
+One command — registers the server in `~/.cursor/mcp.json` automatically:
+
+```bash
+npx -y -p apollo-cache-copilot@latest apollo-copilot install-cursor
+```
+
+Add `--project` to write `.cursor/mcp.json` in the current repo instead of the
+global config. Restart Cursor (or reload window), then Settings → MCP →
+confirm the server is green.
+
+Manual alternative, same file:
 
 ```json
 {
@@ -337,7 +347,28 @@ Local checkout:
 }
 ```
 
-Then Cursor → Settings → MCP → confirm the server is green.
+### Other MCP clients (Windsurf, VS Code, Cline, Zed, ...)
+
+Any client that reads a standard `mcpServers` block takes the same entry —
+only the config file path changes:
+
+| Client | Config file |
+|---|---|
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| VS Code (Copilot) | `.vscode/mcp.json` in the workspace |
+| Cline | VS Code settings → `cline.mcpServers`, or `cline_mcp_settings.json` |
+| Zed | `~/.config/zed/settings.json` under `"context_servers"` |
+
+```json
+{
+  "mcpServers": {
+    "apollo-cache-copilot": {
+      "command": "npx",
+      "args": ["-y", "-p", "apollo-cache-copilot", "apollo-copilot", "mcp"]
+    }
+  }
+}
+```
 
 ### Then just ask
 
