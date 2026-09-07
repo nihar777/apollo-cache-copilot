@@ -3,13 +3,15 @@
  * CLI entry point for apollo-cache-copilot.
  *
  * Subcommands:
- *   apollo-copilot [mcp]          Start the Stdio MCP server (default if no args)
- *   apollo-copilot inspect FILE   Read a JSON cache snapshot and print diagnostics
+ *   apollo-copilot [mcp]              Start the Stdio MCP server (default if no args)
+ *   apollo-copilot inspect FILE       Read a JSON cache snapshot and print diagnostics
+ *   apollo-copilot install-cursor     Write this server into Cursor's mcp.json
  *
  * All logic lives in dist/; this file only dispatches and handles errors.
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { startStdioServer, runInspectDanglingRefs, Tracer, formatTraceSummary } from '../dist/index.js';
@@ -93,6 +95,37 @@ function printDiagnostic(result) {
 }
 
 /**
+ * Merge this server into a Cursor mcp.json, creating the file/dir if needed.
+ * Never touches other servers already registered there.
+ */
+function installCursor(scopeArg) {
+  const project = scopeArg === '--project';
+  const dir = project ? path.join(process.cwd(), '.cursor') : path.join(os.homedir(), '.cursor');
+  const file = path.join(dir, 'mcp.json');
+
+  let config = { mcpServers: {} };
+  if (fs.existsSync(file)) {
+    try {
+      config = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    } catch (err) {
+      console.error(`[apollo-copilot] ${file} has invalid JSON, refusing to overwrite: ${err.message}`);
+      process.exit(1);
+    }
+    if (!config.mcpServers) config.mcpServers = {};
+  }
+
+  config.mcpServers['apollo-cache-copilot'] = {
+    command: 'npx',
+    args: ['-y', '-p', 'apollo-cache-copilot@latest', 'apollo-copilot-mcp'],
+  };
+
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
+  console.log(`[apollo-copilot] registered MCP server → ${file}`);
+  console.log('Restart Cursor (or reload window) to pick it up.');
+}
+
+/**
  * Main entry point.
  */
 async function main() {
@@ -127,11 +160,14 @@ async function main() {
       console.error('[apollo-copilot] inspect failed:', err.message);
       process.exit(1);
     }
+  } else if (cmd === 'install-cursor') {
+    installCursor(arg);
   } else {
     console.error(`[apollo-copilot] unknown command: ${cmd}`);
     console.error('Usage:');
-    console.error('  apollo-copilot [mcp]          Start MCP server (default)');
-    console.error('  apollo-copilot inspect FILE   Diagnose a cache snapshot');
+    console.error('  apollo-copilot [mcp]              Start MCP server (default)');
+    console.error('  apollo-copilot inspect FILE       Diagnose a cache snapshot');
+    console.error('  apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)');
     process.exit(2);
   }
 }
