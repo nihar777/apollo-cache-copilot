@@ -279,7 +279,15 @@ get the JSON.
 
 ### Claude Desktop
 
-`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
+One command — finds the right config path per OS and registers the server:
+
+```bash
+npx -y -p apollo-cache-copilot@latest apollo-copilot install-claude
+```
+
+Restart Claude Desktop, the three tools appear under the tools menu.
+
+Manual alternative — `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
 `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json

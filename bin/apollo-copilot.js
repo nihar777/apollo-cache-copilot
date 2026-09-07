@@ -6,6 +6,7 @@
  *   apollo-copilot [mcp]              Start the Stdio MCP server (default if no args)
  *   apollo-copilot inspect FILE       Read a JSON cache snapshot and print diagnostics
  *   apollo-copilot install-cursor     Write this server into Cursor's mcp.json
+ *   apollo-copilot install-claude     Write this server into Claude Desktop's config
  *
  * All logic lives in dist/; this file only dispatches and handles errors.
  */
@@ -94,14 +95,17 @@ function printDiagnostic(result) {
   }
 }
 
+const SERVER_ENTRY = {
+  command: 'npx',
+  args: ['-y', '-p', 'apollo-cache-copilot@latest', 'apollo-copilot-mcp'],
+};
+
 /**
- * Merge this server into a Cursor mcp.json, creating the file/dir if needed.
- * Never touches other servers already registered there.
+ * Merge the apollo-cache-copilot server into a client's mcpServers config file,
+ * creating the file/dir if needed. Never touches other servers already there.
  */
-function installCursor(scopeArg) {
-  const project = scopeArg === '--project';
-  const dir = project ? path.join(process.cwd(), '.cursor') : path.join(os.homedir(), '.cursor');
-  const file = path.join(dir, 'mcp.json');
+function registerMcpServer(file, restartHint) {
+  const dir = path.dirname(file);
 
   let config = { mcpServers: {} };
   if (fs.existsSync(file)) {
@@ -114,15 +118,33 @@ function installCursor(scopeArg) {
     if (!config.mcpServers) config.mcpServers = {};
   }
 
-  config.mcpServers['apollo-cache-copilot'] = {
-    command: 'npx',
-    args: ['-y', '-p', 'apollo-cache-copilot@latest', 'apollo-copilot-mcp'],
-  };
+  config.mcpServers['apollo-cache-copilot'] = SERVER_ENTRY;
 
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
   console.log(`[apollo-copilot] registered MCP server → ${file}`);
-  console.log('Restart Cursor (or reload window) to pick it up.');
+  console.log(restartHint);
+}
+
+function installCursor(scopeArg) {
+  const project = scopeArg === '--project';
+  const dir = project ? path.join(process.cwd(), '.cursor') : path.join(os.homedir(), '.cursor');
+  registerMcpServer(path.join(dir, 'mcp.json'), 'Restart Cursor (or reload window) to pick it up.');
+}
+
+function claudeDesktopConfigPath() {
+  switch (process.platform) {
+    case 'darwin':
+      return path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+    case 'win32':
+      return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json');
+    default:
+      return path.join(os.homedir(), '.config', 'Claude', 'claude_desktop_config.json');
+  }
+}
+
+function installClaude() {
+  registerMcpServer(claudeDesktopConfigPath(), 'Restart Claude Desktop to pick it up.');
 }
 
 /**
@@ -162,12 +184,15 @@ async function main() {
     }
   } else if (cmd === 'install-cursor') {
     installCursor(arg);
+  } else if (cmd === 'install-claude') {
+    installClaude();
   } else {
     console.error(`[apollo-copilot] unknown command: ${cmd}`);
     console.error('Usage:');
     console.error('  apollo-copilot [mcp]              Start MCP server (default)');
     console.error('  apollo-copilot inspect FILE       Diagnose a cache snapshot');
     console.error('  apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)');
+    console.error('  apollo-copilot install-claude     Register with Claude Desktop');
     process.exit(2);
   }
 }
