@@ -68,6 +68,9 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.4.3"
   },
+  "overrides": {
+    "hono": "^4.13.7"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nihar777/apollo-cache-copilot.git"
