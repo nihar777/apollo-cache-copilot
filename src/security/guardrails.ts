@@ -296,6 +296,17 @@ export const KNOWN_TOOLS = [
 export const KNOWN_OPERATION_TYPES = ['modify', 'evict'] as const;
 export const KNOWN_PATCH_ACTIONS = ['DELETE', 'INVALIDATE', 'SET', 'PRUNE_DANGLING_REFS'] as const;
 
+/**
+ * Policy token for `{ type: 'evict' }` operations. Evict ops carry no
+ * `fields`, so they have no per-field `action` to match; without a token of
+ * their own the role and action allowlists could not name them, and the
+ * checks below skipped them entirely. Deliberately NOT in
+ * `KNOWN_PATCH_ACTIONS`: that list validates `fields[*].action`, where
+ * `EVICT` is not a legal value. Usable in `APOLLO_COPILOT_ALLOWED_PATCH_ACTIONS`.
+ */
+const EVICT_POLICY_ACTION = 'EVICT';
+const ALL_POLICY_ACTIONS: readonly string[] = [...KNOWN_PATCH_ACTIONS, EVICT_POLICY_ACTION];
+
 export type KnownTool = (typeof KNOWN_TOOLS)[number];
 
 /**
@@ -335,11 +346,14 @@ const ROLE_TOOLS: Record<KnownRole, readonly string[]> = {
   admin: KNOWN_TOOLS,
 };
 
-/** `readonly` gets no patch actions at all — it can't reach `patch_cache` in the first place. */
+/**
+ * `readonly` gets no patch actions at all — it can't reach `patch_cache` in the first place.
+ * `operator` gets only the non-destructive ones: no `EVICT`, which destroys a whole entity.
+ */
 const ROLE_PATCH_ACTIONS: Record<KnownRole, readonly string[]> = {
   readonly: [],
   operator: ['INVALIDATE', 'PRUNE_DANGLING_REFS'],
-  admin: KNOWN_PATCH_ACTIONS,
+  admin: ALL_POLICY_ACTIONS,
 };
 
 function currentRole(): KnownRole | undefined {
@@ -389,7 +403,7 @@ export function assertOperationsAllowed(operations: unknown, allowed?: readonly 
 
   const explicit = allowed ?? envAllowlist(ACTION_ALLOWLIST_ENV);
   const role = currentRole();
-  const list = explicit ?? (role ? ROLE_PATCH_ACTIONS[role] : undefined) ?? KNOWN_PATCH_ACTIONS;
+  const list = explicit ?? (role ? ROLE_PATCH_ACTIONS[role] : undefined) ?? ALL_POLICY_ACTIONS;
   const source =
     role && !explicit ? `role "${role}"` : `${ACTION_ALLOWLIST_ENV}`;
 
@@ -402,6 +416,14 @@ export function assertOperationsAllowed(operations: unknown, allowed?: readonly 
         'ACTION_NOT_ALLOWED',
         `operations[${i}]: unknown operation type "${type}". ` +
           `Allowed: ${KNOWN_OPERATION_TYPES.join(', ')}.`,
+      );
+    }
+
+    if (type === 'evict' && !list.includes(EVICT_POLICY_ACTION)) {
+      throw new GuardrailError(
+        'ACTION_NOT_ALLOWED',
+        `operations[${i}]: entity eviction ("${EVICT_POLICY_ACTION}") is disabled by ` +
+          `${source} (allowed: ${list.join(', ') || 'none'}).`,
       );
     }
 
@@ -437,9 +459,10 @@ export function assertOperationsAllowed(operations: unknown, allowed?: readonly 
 /**
  * Actions that overwrite or destroy live data outright, vs. `INVALIDATE`
  * (marks stale, changes nothing) and `PRUNE_DANGLING_REFS` (removes only
- * pointers that already don't resolve to anything).
+ * pointers that already don't resolve to anything). `EVICT` is the policy
+ * token for `{ type: 'evict' }` operations, which have no field action.
  */
-export const HIGH_RISK_PATCH_ACTIONS = new Set(['SET', 'DELETE']);
+export const HIGH_RISK_PATCH_ACTIONS = new Set(['SET', 'DELETE', EVICT_POLICY_ACTION]);
 
 export const APPROVAL_REQUIRED_ENV = 'APOLLO_COPILOT_REQUIRE_APPROVAL';
 
@@ -460,7 +483,17 @@ export function assertHumanApproved(operations: unknown, approved: boolean, dryR
 
   operations.forEach((op, i) => {
     if (typeof op !== 'object' || op === null) return;
-    const { fields } = op as { fields?: unknown };
+    const { type, fields } = op as { type?: unknown; fields?: unknown };
+
+    // Every evict is gated, field-level included: it still deletes stored data.
+    if (type === 'evict' && HIGH_RISK_PATCH_ACTIONS.has(EVICT_POLICY_ACTION)) {
+      throw new GuardrailError(
+        'APPROVAL_REQUIRED',
+        `operations[${i}]: "evict" is high-risk and ${APPROVAL_REQUIRED_ENV} is set. ` +
+          'Retry with "approved": true once a human has reviewed these operations.',
+      );
+    }
+
     if (typeof fields !== 'object' || fields === null) return;
 
     for (const [fieldName, patch] of Object.entries(fields as Record<string, unknown>)) {

@@ -210,7 +210,8 @@ export const PatchCacheInputSchema = z.object({
   dryRun: z
     .boolean()
     .default(false)
-    .describe('Validate `operations` and report what would happen without mutating the cache.'),
+    .describe('Validate `operations` against the schema and the policy guards, then return without touching the cache. ' +
+        'Validation only, not a preview: every result reports `changed: false`, so it cannot tell you which operations would change something.'),
   approved: z
     .boolean()
     .default(false)

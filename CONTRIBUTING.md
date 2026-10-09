@@ -151,14 +151,7 @@ cell is a real failure; `fail-fast` is off so you see all of them at once.
 
 ## Good first issues
 
-Two real ones, both small and both currently in the tree:
-
-**`compareQueryToCache` is declared but not implemented.**
-`CompareQueryToCacheInputSchema` / `OutputSchema` and the `CacheMiss` type exist
-in `src/schemas/tools.ts` and are exported from `src/index.ts`, but no tool
-implements them. The contract is already designed: take a cache, a query
-document and variables, and report which requested fields the cache cannot
-satisfy and why (`MISSING_FIELD` / `DANGLING_REF` / `NOT_NORMALIZED`).
+One real one, small and currently in the tree:
 
 **The CLI prints a `DANGLING_REF` branch that never fires.**
 `bin/apollo-copilot.js:71` lists `DANGLING_REF` in its `kinds` array and icon

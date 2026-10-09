@@ -224,7 +224,8 @@ export function createServer(): McpServer {
       title: 'Patch cache',
       description:
         'Apply declarative repairs (modify / evict, optional gc) to a serialized cache and return ' +
-        'the patched store. Set dryRun to validate the operations without changing anything.',
+        'the patched store. Set dryRun to validate the operations without changing anything; it checks ' +
+        'validity and policy only and does not preview what would change.',
       inputSchema: PatchCacheMcpInputSchema.shape,
       outputSchema: PatchCacheMcpOutputSchema.shape,
       // destructiveHint: the platform-native MCP signal well-behaved clients

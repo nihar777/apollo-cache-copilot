@@ -43,7 +43,7 @@ React Native makes every one of them worse:
 
 1. **A cache analyzer** that walks `cache.extract()` output and reports structural
    defects with exact paths (`User:1.avatar → Avatar:99`). Plain graph traversal —
-   no model involved, no guessing, runs on a 10MB snapshot.
+   no model involved, no guessing.
 2. **An MCP server** exposing that analyzer to whichever agent the developer is
    already talking to. The agent asks for findings plus the relevant subgraph, so
    it never has to hold the whole cache in context.
@@ -69,7 +69,8 @@ ASCII, same thing:
   │ StdioServerTransport            │
   ├─────────────────────────────────┤
   │ tools: inspect_dangling_refs    │  read-only
-  │        patch_cache              │  mutating (dryRun available)
+  │        compare_query_to_cache   │  read-only
+  │        patch_cache              │  mutating (dryRun = validate only)
   │        diagnose_cache_graph     │  read-only, plans only
   ├─────────────────────────────────┤
   │ Zod schemas — parse at the edge │
@@ -112,8 +113,13 @@ npm install apollo-cache-copilot
 npm install && npm run build
 ```
 
-Requires Node.js ≥ 20 (`vitest` 4 and `@langchain/core` both require it; CI covers 20 and 22). `@apollo/client` (v3.8+ or v4), `react`, and
+Requires Node.js ≥ 20 (`vitest` 4 and `@langchain/core` both require it; CI covers 20 and 22). `@apollo/client` (declared range `^3.8 || ^4.0`), `react`, and
 `react-native` are **peer** dependencies — the package uses your app's copies.
+
+**Apollo Client versions — what is actually verified:** the full suite runs against
+3.14.x. A separate CI job runs the runtime tests against 4.x. Not verified: 3.8–3.13,
+and the TypeScript types under 4.x (`tsc` currently fails against v4's types because
+`ApolloCache` is no longer generic), so on v4 treat the type declarations as untested.
 
 ---
 
@@ -147,7 +153,13 @@ for (const f of findings) {
 ```
 
 Finding kinds: `ORPHANED_REF`, `UNREACHABLE_ENTITY`, `MISSING_TYPENAME`,
-`MISSING_ID`. Every finding carries an exact cache path.
+`MISSING_ID`, and (opt-in via `includeIdentityRisk`) `UNSCOPED_IDENTITY_FIELD`.
+Every finding carries an exact cache path.
+
+Entities you `cache.retain()` are listed by Apollo under `__META.extraRootIds` in
+`extract()` output. They count as reachability roots, so they are not reported as
+unreachable, and `__META` itself is not treated as an entity (or counted in
+`entityCount`).
 
 ### `patchCache` — apply repairs to a live cache
 
@@ -171,7 +183,7 @@ const { dryRun, results, collected } = patchCache(client.cache, {
     { type: 'evict', id: 'ROOT_QUERY', fieldName: 'user', args: { id: '1' } },
   ],
   gc: true,       // run cache.gc() once, after everything lands
-  dryRun: false,  // true = validate only, cache untouched
+  dryRun: false,  // true = validate only: nothing is applied and nothing is previewed
 });
 
 results.forEach((r) => console.log(r.changed, r.error ?? ''));
@@ -267,7 +279,8 @@ thing.
 |---|---|---|
 | `inspect_dangling_refs` | `cache`, optional `rootIds` / `includeUnreachable` / `includeNormalizationGaps` | Read-only. Returns `findings` + `stats`. |
 | `diagnose_cache_graph` | `cache` | Read-only. Runs the full graph. Returns `findings`, `proposedPatches`, `narration`. Plans only. |
-| `patch_cache` | `cache`, `operations`, `gc`, `dryRun` | Restores the snapshot into a throwaway `InMemoryCache`, patches it, returns `results` + the re-extracted `cache`. |
+| `compare_query_to_cache` | `cache`, `query`, optional `variables` / `rootId` / `returnPartialData` | Read-only. Runs the query against the snapshot; returns `complete`, `misses` (with reason) and `satisfiedFields`. |
+| `patch_cache` | `cache`, `operations`, `gc`, `dryRun` | Restores the snapshot into a throwaway `InMemoryCache`, patches it, returns `results` + the re-extracted `cache`. `dryRun` validates only; it does not preview what would change. |
 
 `patch_cache` carries the snapshot because a stdio server has no live cache to
 hand the patcher — only JSON. Diff the returned `cache` against yours, or
@@ -285,7 +298,7 @@ One command — finds the right config path per OS and registers the server:
 npx -y -p apollo-cache-copilot@latest apollo-copilot install-claude
 ```
 
-Restart Claude Desktop, the three tools appear under the tools menu.
+Restart Claude Desktop, the four tools appear under the tools menu.
 
 Manual alternative — `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
 `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
@@ -315,7 +328,7 @@ with an absolute path:
 }
 ```
 
-Restart Claude Desktop. The three tools appear under the tools menu.
+Restart Claude Desktop. The four tools appear under the tools menu.
 
 ### Cursor
 
@@ -403,6 +416,9 @@ everything and emits nothing.
 
 ## Success Metrics
 
+These are design targets. No benchmark or measured results are published in this
+repository, so none of the figures below is a claim about the current release.
+
 | # | Metric | Target |
 |---|---|---|
 | 1 | Detection recall on the fixture suite | 100% — every seeded defect found |
@@ -420,10 +436,8 @@ covers setup, the seven invariants in this codebase that break *silently*
 only `messages` accumulates in the graph state), and the seven-step checklist
 for adding a new defect kind.
 
-Two open starters, both small and both live in the tree today:
+One open starter, small and live in the tree today:
 
-- **`compareQueryToCache` is declared but unimplemented** — schemas and types
-  exist in `src/schemas/tools.ts` and are exported, but no tool backs them.
 - **The CLI prints a `DANGLING_REF` branch that never fires** —
   `bin/apollo-copilot.js:71` lists a kind `FindingKindSchema` never emits.
 

@@ -112,6 +112,17 @@ function inferReason(message: string, parentValue: unknown): CacheMiss['reason']
   return 'MISSING_FIELD';
 }
 
+/**
+ * Apollo 3 reports `diff.missing` as an array of `MissingFieldError`; Apollo 4
+ * reports a single `MissingFieldError`. Both carry the miss tree on `.missing`,
+ * so normalizing to an array is all the reader below needs. Without this, v4
+ * returned `complete: false` with an empty `misses` list.
+ */
+export function toMissingEntries(missing: unknown): unknown[] {
+  if (Array.isArray(missing)) return missing;
+  return missing ? [missing] : [];
+}
+
 export function compareQueryToCache(input: unknown): CompareQueryToCacheOutput {
   const args = CompareQueryToCacheInputSchema.parse(input);
 
@@ -155,7 +166,7 @@ export function compareQueryToCache(input: unknown): CompareQueryToCacheOutput {
   }
 
   const misses: CacheMiss[] = [];
-  const missingEntries = Array.isArray(diff.missing) ? diff.missing : [];
+  const missingEntries = toMissingEntries(diff.missing);
   for (const entry of missingEntries) {
     const tree = isPlainObject(entry) ? entry.missing : undefined;
     for (const leaf of flattenMissingTree(tree)) {
