@@ -12,7 +12,8 @@
  * needs in order to be actionable.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { InMemoryCache } from '@apollo/client/cache/index.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ACTION_ALLOWLIST_ENV,
@@ -50,6 +51,7 @@ const FAKE_STRIPE_LIVE_KEY = ['sk_live_', '4eC39HqLyjWDarjtT1zdp7dc'].join('');
 const FAKE_GOOGLE_API_KEY = ['AIza', 'SyD-1234567890abcdefghijklmnopqrstu'].join('');
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete process.env[TOOL_ALLOWLIST_ENV];
   delete process.env[ACTION_ALLOWLIST_ENV];
   delete process.env[ROLE_ENV];
@@ -619,5 +621,167 @@ describe('assertHumanApproved', () => {
         approved: true,
       }),
     ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Entity eviction is policy-gated (V1)
+//
+// `evict` ops carry no `fields`, so the guards used to skip them entirely:
+// an operator role or an approval gate that refused SET/DELETE still let a
+// whole entity be evicted.
+// ---------------------------------------------------------------------------
+
+describe('evict is subject to approval and role policy', () => {
+  const evictOp = { type: 'evict', id: 'User:1' };
+  const pruneOp = { type: 'modify', id: 'ROOT_QUERY', fields: { u: { action: 'PRUNE_DANGLING_REFS' } } };
+  const cache = () => ({
+    ROOT_QUERY: { __typename: 'Query', u: { __ref: 'User:1' } },
+    'User:1': { __typename: 'User', id: '1', name: 'Ada' },
+  });
+
+  describe('approval gate (APOLLO_COPILOT_REQUIRE_APPROVAL=true)', () => {
+    it('rejects an unapproved evict', () => {
+      process.env[APPROVAL_REQUIRED_ENV] = 'true';
+      try {
+        assertHumanApproved([evictOp], false, false);
+        expect.unreachable('should have thrown');
+      } catch (err) {
+        expect((err as GuardrailError).code).toBe('APPROVAL_REQUIRED');
+        expect((err as GuardrailError).message).toContain('operations[0]');
+        expect((err as GuardrailError).message).toContain('evict');
+      }
+    });
+
+    it('rejects an unapproved evict through the real patch_cache path', () => {
+      process.env[APPROVAL_REQUIRED_ENV] = 'true';
+      expect(() => runPatchCache({ cache: cache(), operations: [evictOp] })).toThrow(/APPROVAL_REQUIRED|approved/);
+    });
+
+    it('allows an approved evict and actually evicts', () => {
+      process.env[APPROVAL_REQUIRED_ENV] = 'true';
+      const out = runPatchCache({ cache: cache(), operations: [evictOp], approved: true });
+      expect(out.results[0].changed).toBe(true);
+      expect(out.cache).not.toHaveProperty('User:1');
+    });
+
+    it('dry-run evict never needs approval, and leaves the cache untouched', () => {
+      process.env[APPROVAL_REQUIRED_ENV] = 'true';
+      const out = runPatchCache({ cache: cache(), operations: [evictOp], dryRun: true });
+      expect(out.dryRun).toBe(true);
+      expect(out.cache).toHaveProperty('User:1');
+    });
+
+    it('gates a field-level evict too — it still destroys stored data', () => {
+      process.env[APPROVAL_REQUIRED_ENV] = 'true';
+      expect(() =>
+        assertHumanApproved([{ type: 'evict', id: 'ROOT_QUERY', fieldName: 'u' }], false, false),
+      ).toThrow(/APPROVAL_REQUIRED|high-risk/);
+    });
+  });
+
+  describe('role policy (APOLLO_COPILOT_ROLE)', () => {
+    it('operator cannot evict', () => {
+      process.env[ROLE_ENV] = 'operator';
+      try {
+        assertOperationsAllowed([evictOp]);
+        expect.unreachable('should have thrown');
+      } catch (err) {
+        expect((err as GuardrailError).code).toBe('ACTION_NOT_ALLOWED');
+        expect((err as GuardrailError).message).toContain('role "operator"');
+      }
+    });
+
+    it('operator evict is refused through the real patch_cache path', () => {
+      process.env[ROLE_ENV] = 'operator';
+      expect(() => runPatchCache({ cache: cache(), operations: [evictOp] })).toThrow(GuardrailError);
+    });
+
+    it('operator dry-run evict is refused too — role policy ignores dryRun, same as SET', () => {
+      process.env[ROLE_ENV] = 'operator';
+      expect(() => runPatchCache({ cache: cache(), operations: [evictOp], dryRun: true })).toThrow(GuardrailError);
+    });
+
+    it('operator can still run its permitted action', () => {
+      process.env[ROLE_ENV] = 'operator';
+      expect(() => assertOperationsAllowed([pruneOp])).not.toThrow();
+    });
+
+    it('admin can evict', () => {
+      process.env[ROLE_ENV] = 'admin';
+      const out = runPatchCache({ cache: cache(), operations: [evictOp] });
+      expect(out.results[0].changed).toBe(true);
+      expect(out.cache).not.toHaveProperty('User:1');
+    });
+
+    it('an explicit action allowlist that omits EVICT refuses it; one that names EVICT allows it', () => {
+      process.env[ACTION_ALLOWLIST_ENV] = 'PRUNE_DANGLING_REFS';
+      expect(() => assertOperationsAllowed([evictOp])).toThrow(/EVICT/);
+      process.env[ACTION_ALLOWLIST_ENV] = 'PRUNE_DANGLING_REFS,EVICT';
+      expect(() => assertOperationsAllowed([evictOp])).not.toThrow();
+    });
+
+    it('EVICT is a policy token, not a field action — a modify op naming it is still unknown', () => {
+      expect(() =>
+        assertOperationsAllowed([{ type: 'modify', id: 'User:1', fields: { f: { action: 'EVICT' } } }]),
+      ).toThrow(/unknown action "EVICT"/);
+    });
+  });
+
+  describe('default behaviour with every gate off is unchanged', () => {
+    it('evict works with no env set', () => {
+      expect(() => assertOperationsAllowed([evictOp])).not.toThrow();
+      expect(() => assertHumanApproved([evictOp], false, false)).not.toThrow();
+      const out = runPatchCache({ cache: cache(), operations: [evictOp] });
+      expect(out.results[0].changed).toBe(true);
+      expect(out.cache).not.toHaveProperty('User:1');
+    });
+
+    it('an unrecognized role is ignored for evict too', () => {
+      process.env[ROLE_ENV] = 'superadmin';
+      expect(() => assertOperationsAllowed([evictOp])).not.toThrow();
+    });
+  });
+
+  describe('missing and repeated targets', () => {
+    it('evicting a missing entity reports changed:false and no error', () => {
+      const out = runPatchCache({ cache: cache(), operations: [{ type: 'evict', id: 'Nope:1' }] });
+      expect(out.results[0]).toMatchObject({ changed: false });
+      expect(out.results[0].error).toBeUndefined();
+      expect(out.cache).toHaveProperty('User:1');
+    });
+
+    it('evicting the same entity twice: first changes, second is a no-op', () => {
+      const out = runPatchCache({ cache: cache(), operations: [evictOp, evictOp] });
+      expect(out.results.map((r) => r.changed)).toEqual([true, false]);
+      expect(out.results.every((r) => r.error === undefined)).toBe(true);
+    });
+  });
+
+  describe('a batch with an unauthorized evict is rejected before any mutation', () => {
+    it('role policy: [permitted modify, forbidden evict] mutates nothing', () => {
+      process.env[ROLE_ENV] = 'operator';
+      const input = cache();
+      const before = JSON.stringify(input);
+      const evictSpy = vi.spyOn(InMemoryCache.prototype, 'evict');
+      const modifySpy = vi.spyOn(InMemoryCache.prototype, 'modify');
+
+      expect(() => runPatchCache({ cache: input, operations: [pruneOp, evictOp] })).toThrow(/operations\[1\]/);
+
+      expect(modifySpy).not.toHaveBeenCalled();
+      expect(evictSpy).not.toHaveBeenCalled();
+      expect(JSON.stringify(input)).toBe(before);
+    });
+
+    it('approval gate: [low-risk modify, unapproved evict] mutates nothing', () => {
+      process.env[APPROVAL_REQUIRED_ENV] = 'true';
+      const evictSpy = vi.spyOn(InMemoryCache.prototype, 'evict');
+      const modifySpy = vi.spyOn(InMemoryCache.prototype, 'modify');
+
+      expect(() => runPatchCache({ cache: cache(), operations: [pruneOp, evictOp] })).toThrow(GuardrailError);
+
+      expect(modifySpy).not.toHaveBeenCalled();
+      expect(evictSpy).not.toHaveBeenCalled();
+    });
   });
 });

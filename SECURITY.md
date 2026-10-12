@@ -76,9 +76,14 @@ are always refused. Operators can narrow further:
 # Register the MCP server read-only — patch_cache refuses to run at all.
 APOLLO_COPILOT_ALLOWED_TOOLS=inspect_dangling_refs,diagnose_cache_graph
 
-# Allow repairs but forbid arbitrary writes.
+# Allow repairs but forbid arbitrary writes and entity eviction.
 APOLLO_COPILOT_ALLOWED_PATCH_ACTIONS=DELETE,INVALIDATE,PRUNE_DANGLING_REFS
 ```
+
+`{ "type": "evict" }` operations are governed by the same list under the name
+`EVICT`: add it (`...,PRUNE_DANGLING_REFS,EVICT`) to permit them. If you set
+this variable and do not list `EVICT`, evicts are refused. (In earlier releases evicts
+bypassed this list entirely.)
 
 Both are read per call, so a wrapper script can set them. Unset means the full
 known set, so upgrading changes no existing configuration's behaviour.
@@ -87,7 +92,8 @@ An operator can also set `APOLLO_COPILOT_ROLE` (`readonly` / `operator` /
 `admin`) as a single-flag preset instead of naming both allowlists by hand —
 `readonly` grants no tools but the two read-only ones, `operator` adds
 `patch_cache` restricted to the non-destructive actions (`INVALIDATE`,
-`PRUNE_DANGLING_REFS`), `admin` is the full known set. An explicit allowlist,
+`PRUNE_DANGLING_REFS`; no `EVICT`), `admin` is the full known set, including
+`EVICT`. An explicit allowlist,
 if set, always overrides the role.
 
 **Untrusted-content boundary.** Findings, narration and trace text can embed
@@ -108,8 +114,8 @@ that every client-side model resists it.
 **Human-in-the-loop approval for high-risk writes.** `patch_cache` declares
 `destructiveHint: true` so an MCP client that gates destructive tools behind
 its own approval UI does so. Server-side, `APOLLO_COPILOT_REQUIRE_APPROVAL=true`
-additionally refuses any `SET` or `DELETE` field action — the two that
-overwrite or remove live data outright — unless the request sets
+additionally refuses any `SET` or `DELETE` field action, and any `evict`
+operation (whole-entity or single-field), unless the request sets
 `"approved": true`. `dryRun` calls, and the non-destructive actions
 (`INVALIDATE`, `PRUNE_DANGLING_REFS`), are never gated. Off by default, same as
 the allowlists: an operator opts in.
@@ -130,7 +136,8 @@ the allowlists: an operator opts in.
   `APOLLO_COPILOT_ALLOWED_TOOLS` excludes it, or a patch action applying while
   `APOLLO_COPILOT_ALLOWED_PATCH_ACTIONS` excludes it. Same for a role: a tool or
   action running that `APOLLO_COPILOT_ROLE` should have refused.
-- **An approval bypass** — a `SET` or `DELETE` field action landing while
+- **An approval bypass** — a `SET` or `DELETE` field action, or an `evict`
+  operation, landing while
   `APOLLO_COPILOT_REQUIRE_APPROVAL=true` and the request did not set
   `"approved": true`.
 - **A boundary-marker escape.** Untrusted text (a cache key, a finding message)

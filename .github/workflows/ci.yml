@@ -108,3 +108,40 @@ jobs:
           JSON
           npx apollo-copilot inspect snap.json | tee out.txt
           grep -q 'ORPHANED_REF' out.txt || { echo "::error::installed CLI did not report the seeded defect"; exit 1; }
+
+  # Runtime check against Apollo Client 4. Deliberately NOT a full matrix cell:
+  # `tsc` does not pass against v4's types yet (`ApolloCache` is no longer
+  # generic), so the build runs on the pinned v3 first and only then is v4
+  # swapped in for the tests. That means this job verifies runtime behaviour on
+  # v4, not type compatibility, and it skips the one suite that shells out to
+  # `tsc`. Drop those two caveats once the types are v4-clean.
+  apollo-v4:
+    name: Apollo Client 4 (runtime)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (against the pinned Apollo 3 types)
+        run: npm run build
+
+      - name: Swap in Apollo Client 4
+        run: |
+          set -euo pipefail
+          npm install --no-save @apollo/client@4 rxjs
+          v="$(node -p 'require("@apollo/client/package.json").version')"
+          echo "Testing against @apollo/client $v"
+          case "$v" in 4.*) ;; *) echo "::error::expected Apollo Client 4, got $v"; exit 1;; esac
+
+      - name: Test (runtime; excludes the suite that runs tsc)
+        run: npx vitest run -t '^(?!.*built binary over Stdio)'

@@ -26,6 +26,21 @@ const DEFAULT_ROOT_IDS = ['ROOT_QUERY', 'ROOT_MUTATION', 'ROOT_SUBSCRIPTION'];
  */
 const DEFAULT_IDENTITY_FIELD_NAMES = ['me', 'viewer', 'currentUser', 'currentAccount', 'session', 'profile'];
 
+/**
+ * Apollo's own bookkeeping entry in `cache.extract()` output, present once any
+ * entity has been `retain()`ed: `{ extraRootIds: string[] }`. It is not an
+ * entity, so it is never walked or counted; its ids are extra reachability
+ * roots, because `cache.gc()` treats retained entities as roots.
+ */
+const META_KEY = '__META';
+
+/** Retained entity ids from `__META.extraRootIds`; anything malformed is ignored. */
+function retainedRootIds(cache: Record<string, unknown>): string[] {
+  const meta = cache[META_KEY];
+  const ids = isPlainObject(meta) ? meta.extraRootIds : undefined;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+}
+
 /** `user({"id":"1"})` -> `user` — strip Apollo's serialized-args suffix. */
 function bareFieldName(storeKeyName: string): string {
   const paren = storeKeyName.indexOf('(');
@@ -58,7 +73,7 @@ export function inspectDanglingRefs(input: unknown): InspectDanglingRefsOutput {
   const { cache, includeUnreachable, includeNormalizationGaps, includeIdentityRisk } = args;
   const identityFieldNames = args.identityFieldNames ?? DEFAULT_IDENTITY_FIELD_NAMES;
 
-  const entityKeys = Object.keys(cache);
+  const entityKeys = Object.keys(cache).filter((key) => key !== META_KEY);
   const findings: Finding[] = [];
   let refCount = 0;
   let danglingCount = 0;
@@ -136,7 +151,10 @@ export function inspectDanglingRefs(input: unknown): InspectDanglingRefsOutput {
   let unreachableCount = 0;
 
   if (includeUnreachable) {
-    const roots = args.rootIds ?? DEFAULT_ROOT_IDS.filter((id) => id in cache);
+    const roots = [
+      ...(args.rootIds ?? DEFAULT_ROOT_IDS.filter((id) => id in cache)),
+      ...retainedRootIds(cache),
+    ];
     const reachable = new Set<string>();
     const queue = [...roots];
 

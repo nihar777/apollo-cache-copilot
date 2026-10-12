@@ -9,6 +9,7 @@
  */
 
 import { InMemoryCache } from '@apollo/client/cache/index.js';
+import { gql } from '@apollo/client/core/index.js';
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
 
@@ -26,7 +27,7 @@ import {
   PatchOperationSchema,
 } from '../../schemas/tools.js';
 import { inspectDanglingRefs } from '../inspectDanglingRefs.js';
-import { compareQueryToCache } from '../compareQueryToCache.js';
+import { compareQueryToCache, toMissingEntries } from '../compareQueryToCache.js';
 import { patchCache } from '../patchCache.js';
 
 /** Minimal cache that satisfies NormalizedCacheSchema. */
@@ -346,8 +347,102 @@ describe('inspectDanglingRefs', () => {
 });
 
 // ---------------------------------------------------------------------------
+// inspectDanglingRefs: retained entities (`__META.extraRootIds`)
+//
+// Snapshots here come from a real `InMemoryCache.extract()`, not hand-written
+// JSON: `__META` is Apollo's own bookkeeping key, and its shape is the thing
+// under test. Note Apollo auto-retains any non-root entity written with an
+// explicit `id` (`writeFragment`), so the genuinely-unreachable entity has to
+// be left behind by deleting a pointer instead.
+// ---------------------------------------------------------------------------
+
+describe('inspectDanglingRefs with retained entities', () => {
+  function realSnapshot() {
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: gql`{ me { __typename id } stale { __typename id } }`,
+      data: {
+        me: { __typename: 'User', id: '1' },
+        stale: { __typename: 'Post', id: '8' },
+      },
+    });
+    // Orphan Post:8: the pointer goes, the entity stays until gc().
+    cache.modify({ id: 'ROOT_QUERY', fields: { stale: (_v, { DELETE }) => DELETE } });
+    // Retained on purpose, reachable from no root.
+    cache.writeFragment({
+      id: 'Post:5',
+      fragment: gql`fragment Kept on Post { id title }`,
+      data: { __typename: 'Post', id: '5', title: 'kept' },
+    });
+    cache.retain('Post:5');
+    return cache.extract() as Record<string, Record<string, unknown>>;
+  }
+
+  it('the fixture really is Apollo output carrying __META', () => {
+    const snap = realSnapshot();
+    expect(snap.__META).toEqual({ extraRootIds: ['Post:5'] });
+  });
+
+  it('does not report a retained entity as unreachable', () => {
+    const { findings } = inspectDanglingRefs({ cache: realSnapshot() });
+    expect(findings.filter((f) => f.path === 'Post:5')).toEqual([]);
+  });
+
+  it('does not treat __META as an entity', () => {
+    const snap = realSnapshot();
+    const { findings, stats } = inspectDanglingRefs({ cache: snap });
+    expect(findings.some((f) => f.path.startsWith('__META'))).toBe(false);
+    expect(stats.entityCount).toBe(Object.keys(snap).length - 1);
+  });
+
+  it('still reports a genuinely unreachable entity, and only that one', () => {
+    const { findings, stats } = inspectDanglingRefs({ cache: realSnapshot() });
+    expect(findings.map((f) => `${f.kind} ${f.path}`)).toEqual(['UNREACHABLE_ENTITY Post:8']);
+    expect(stats.unreachableCount).toBe(1);
+  });
+
+  it('keeps a normally reachable entity clean', () => {
+    const { findings } = inspectDanglingRefs({ cache: realSnapshot() });
+    expect(findings.some((f) => f.path === 'User:1')).toBe(false);
+  });
+
+  it('follows refs out of a retained entity', () => {
+    const snap = realSnapshot();
+    snap['Post:5'].author = { __ref: 'User:2' };
+    snap['User:2'] = { __typename: 'User', id: '2' };
+    const { findings } = inspectDanglingRefs({ cache: snap });
+    expect(findings.some((f) => f.path === 'User:2')).toBe(false);
+  });
+
+  it('ignores a malformed extraRootIds instead of throwing or trusting it', () => {
+    for (const meta of [{}, { extraRootIds: 'Post:5' }, { extraRootIds: [1, null, 'Post:5'] }]) {
+      const snap = { ...realSnapshot(), __META: meta };
+      expect(() => inspectDanglingRefs({ cache: snap })).not.toThrow();
+    }
+    // Only well-formed string ids count: Post:5 is honoured, the junk is not.
+    const { findings } = inspectDanglingRefs({
+      cache: { ...realSnapshot(), __META: { extraRootIds: [1, null, 'Post:5'] } },
+    });
+    expect(findings.some((f) => f.path === 'Post:5')).toBe(false);
+  });
+
+  it('a cache with no __META behaves exactly as before', () => {
+    const { findings } = inspectDanglingRefs({ cache: orphanedPointer.cache });
+    expect(comparable(findings)).toEqual(comparable(orphanedPointer.expectedFindings));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // compareQueryToCache
 // ---------------------------------------------------------------------------
+
+describe('toMissingEntries (Apollo 3 array vs Apollo 4 single error)', () => {
+  const err = { message: 'x', missing: { v: 'Dangling reference to missing User:9 object' } };
+
+  it('passes a v3 array through', () => expect(toMissingEntries([err])).toEqual([err]));
+  it('wraps a v4 single MissingFieldError', () => expect(toMissingEntries(err)).toEqual([err]));
+  it('returns [] when nothing is missing', () => expect(toMissingEntries(undefined)).toEqual([]));
+});
 
 describe('compareQueryToCache', () => {
   it('returns complete=true with no misses when the cache satisfies the query', () => {

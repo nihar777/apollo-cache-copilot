@@ -134,3 +134,18 @@ describe('round trip', () => {
     expect(after.findings.filter((f) => f.kind === 'ORPHANED_REF')).toEqual([]);
   });
 });
+
+describe('retained entities are never proposed for eviction', () => {
+  it('diagnose proposes no evict for an entity listed in __META.extraRootIds', async () => {
+    const cache = {
+      ROOT_QUERY: { __typename: 'Query' },
+      'Post:5': { __typename: 'Post', id: '5', title: 'kept' },
+      'Post:8': { __typename: 'Post', id: '8', title: 'orphan' },
+      __META: { extraRootIds: ['Post:5'] },
+    };
+    const result = await cacheAgentGraph.invoke({ cacheState: cache });
+
+    const evicted = result.proposedPatches.filter((op) => op.type === 'evict').map((op) => op.id);
+    expect(evicted).toEqual(['Post:8']);
+  });
+});

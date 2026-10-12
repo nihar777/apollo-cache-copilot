@@ -22,7 +22,7 @@ export {
   // inspectDanglingRefs
   InspectDanglingRefsInputSchema,
   InspectDanglingRefsOutputSchema,
-  // compareQueryToCache (future tool)
+  // compareQueryToCache
   CacheMissSchema,
   CompareQueryToCacheInputSchema,
   CompareQueryToCacheOutputSchema,

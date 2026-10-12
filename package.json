@@ -28,6 +28,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "eval": "tsx src/evals/runner.ts",
