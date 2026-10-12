@@ -46,7 +46,7 @@ import { Tracer, withTracer } from '../telemetry/tracer.js';
 export const SERVER_NAME = 'apollo-cache-copilot';
 // Duplicated from package.json — importing it would break `rootDir: src`.
 // `integration.test.ts` asserts the two agree, so a bump that misses one fails.
-export const SERVER_VERSION = '1.2.0';
+export const SERVER_VERSION = '1.3.0';
 
 // ---------------------------------------------------------------------------
 // Result shaping
