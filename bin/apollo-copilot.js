@@ -98,7 +98,7 @@ function printDiagnostic(result) {
 
 const USAGE = `Usage:
   apollo-copilot [mcp]              Start MCP server (default)
-  apollo-copilot inspect FILE       Diagnose a cache snapshot
+  apollo-copilot inspect FILE       Diagnose a cache snapshot (--fail-on-findings: exit 3 on findings)
   apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)
   apollo-copilot install-claude     Register with Claude Desktop
   apollo-copilot --help, -h         Show this help
@@ -206,11 +206,7 @@ async function main() {
     console.log(pkg.version);
   } else {
     console.error(`[apollo-copilot] unknown command: ${cmd}`);
-    console.error('Usage:');
-    console.error('  apollo-copilot [mcp]              Start MCP server (default)');
-    console.error('  apollo-copilot inspect FILE       Diagnose a cache snapshot (--fail-on-findings: exit 3 on findings)');
-    console.error('  apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)');
-    console.error('  apollo-copilot install-claude     Register with Claude Desktop');
+    console.error(USAGE);
     process.exit(2);
   }
 }
