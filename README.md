@@ -257,6 +257,11 @@ Entities: 4 | Refs: 3 | Dangling: 1 | Unreachable: 1
 
 A clean cache prints `✓ Cache is clean: no findings.`
 
+Add `--json` for machine-readable output: stdout is the raw `{ findings, stats }`
+result and nothing else (no banner, no telemetry), e.g.
+`apollo-copilot inspect snapshot.json --json | jq '.findings | length'`. Exit codes
+are the same in both modes, and it combines with `--fail-on-findings`.
+
 Exit codes: `0` success, `1` unexpected failure, `2` bad input (missing file,
 unreadable file, invalid JSON, unknown command), `3` findings reported (only with
 `--fail-on-findings`; without it findings still exit `0`). Use the flag to gate CI:
