@@ -112,6 +112,27 @@ describe('integration: CLI entry points', () => {
     rmSync(dir, { recursive: true });
   });
 
+  it('inspect --json prints only the raw { findings, stats } as valid JSON', () => {
+    const bin = new URL('../../bin/apollo-copilot.js', import.meta.url).pathname;
+    const dir = mkdtempSync(join(tmpdir(), 'apollo-copilot-'));
+    const dirty = join(dir, 'dirty.json');
+    writeFileSync(
+      dirty,
+      JSON.stringify({ ROOT_QUERY: { __typename: 'Query', me: { __ref: 'User:1' } } }),
+    );
+
+    const plain = spawnSync('node', [bin, 'inspect', dirty, '--json']);
+    const parsed = JSON.parse(plain.stdout.toString());
+    expect(Object.keys(parsed).sort()).toEqual(['findings', 'stats']);
+    expect(parsed.findings.length).toBeGreaterThan(0);
+    expect(plain.status).toBe(0);
+
+    const gated = spawnSync('node', [bin, 'inspect', dirty, '--json', '--fail-on-findings']);
+    expect(JSON.parse(gated.stdout.toString()).findings.length).toBeGreaterThan(0);
+    expect(gated.status).toBe(3);
+    rmSync(dir, { recursive: true });
+  });
+
   it('bin/apollo-copilot-mcp.js still exists (backwards compat)', () => {
     const binPath = new URL('../../bin/apollo-copilot-mcp.js', import.meta.url).pathname;
     expect(existsSync(binPath)).toBe(true);

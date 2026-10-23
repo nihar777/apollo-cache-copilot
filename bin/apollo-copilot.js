@@ -5,7 +5,7 @@
  * Subcommands:
  *   apollo-copilot [mcp]              Start the Stdio MCP server (default if no args)
  *   apollo-copilot inspect FILE       Read a JSON cache snapshot and print diagnostics
- *                                     (--fail-on-findings: exit 3 if any finding)
+ *                                     (--json: raw JSON; --fail-on-findings: exit 3 if any finding)
  *   apollo-copilot install-cursor     Write this server into Cursor's mcp.json
  *   apollo-copilot install-claude     Write this server into Claude Desktop's config
  *
@@ -98,7 +98,7 @@ function printDiagnostic(result) {
 
 const USAGE = `Usage:
   apollo-copilot [mcp]              Start MCP server (default)
-  apollo-copilot inspect FILE       Diagnose a cache snapshot (--fail-on-findings: exit 3 on findings)
+  apollo-copilot inspect FILE       Diagnose a cache snapshot (--json, --fail-on-findings: exit 3 on findings)
   apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)
   apollo-copilot install-claude     Register with Claude Desktop
   apollo-copilot --help, -h         Show this help
@@ -172,10 +172,11 @@ async function main() {
     // Inspect subcommand
     const rest = process.argv.slice(3);
     const failOnFindings = rest.includes('--fail-on-findings');
+    const json = rest.includes('--json');
     const file = rest.find((a) => !a.startsWith('--'));
     if (!file) {
       console.error('[apollo-copilot] inspect requires a file path');
-      console.error('Usage: apollo-copilot inspect <cache-snapshot.json> [--fail-on-findings]');
+      console.error('Usage: apollo-copilot inspect <cache-snapshot.json> [--json] [--fail-on-findings]');
       process.exit(2);
     }
 
@@ -187,9 +188,14 @@ async function main() {
         () => runInspectDanglingRefs({ cache, includeIdentityRisk: true }),
         { entityCount: (r) => r.findings.length },
       );
-      printDiagnostic(result);
-      console.log(formatTraceSummary(tracer.export()));
-      console.log();
+      if (json) {
+        // Raw tool result only: no banner, no telemetry, so stdout parses as JSON.
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        printDiagnostic(result);
+        console.log(formatTraceSummary(tracer.export()));
+        console.log();
+      }
       if (failOnFindings && result.findings.length > 0) process.exitCode = 3;
     } catch (err) {
       console.error('[apollo-copilot] inspect failed:', err.message);
