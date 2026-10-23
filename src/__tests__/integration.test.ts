@@ -8,8 +8,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { readFileSync, existsSync } from 'fs';
-import { execSync } from 'child_process';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { execSync, spawnSync } from 'child_process';
 
 describe('integration: public API exports', () => {
   it('dist/index.js exists and is importable', async () => {
@@ -89,6 +91,25 @@ describe('integration: CLI entry points', () => {
     const stat = readFileSync(binPath, { encoding: null, flag: 'r' });
     const content = stat.toString('utf-8', 0, 100);
     expect(content).toContain('#!/usr/bin/env node');
+  });
+
+  it('inspect exits 0 on findings by default and 3 only with --fail-on-findings', () => {
+    const bin = new URL('../../bin/apollo-copilot.js', import.meta.url).pathname;
+    const dir = mkdtempSync(join(tmpdir(), 'apollo-copilot-'));
+    const clean = join(dir, 'clean.json');
+    const dirty = join(dir, 'dirty.json');
+    writeFileSync(clean, JSON.stringify({ ROOT_QUERY: { __typename: 'Query' } }));
+    writeFileSync(
+      dirty,
+      JSON.stringify({ ROOT_QUERY: { __typename: 'Query', me: { __ref: 'User:1' } } }),
+    );
+    const run = (...args: string[]) => spawnSync('node', [bin, 'inspect', ...args]).status;
+
+    expect(run(clean, '--fail-on-findings')).toBe(0);
+    expect(run(dirty)).toBe(0);
+    expect(run(dirty, '--fail-on-findings')).toBe(3);
+    expect(run('--fail-on-findings', dirty)).toBe(3);
+    rmSync(dir, { recursive: true });
   });
 
   it('bin/apollo-copilot-mcp.js still exists (backwards compat)', () => {
