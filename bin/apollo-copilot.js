@@ -96,6 +96,14 @@ function printDiagnostic(result) {
   }
 }
 
+const USAGE = `Usage:
+  apollo-copilot [mcp]              Start MCP server (default)
+  apollo-copilot inspect FILE       Diagnose a cache snapshot
+  apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)
+  apollo-copilot install-claude     Register with Claude Desktop
+  apollo-copilot --help, -h         Show this help
+  apollo-copilot --version, -v      Show version`;
+
 const SERVER_ENTRY = {
   command: 'npx',
   args: ['-y', '-p', 'apollo-cache-copilot@latest', 'apollo-copilot-mcp'],
@@ -191,6 +199,11 @@ async function main() {
     installCursor(arg);
   } else if (cmd === 'install-claude') {
     installClaude();
+  } else if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
+    console.log(USAGE);
+  } else if (cmd === '--version' || cmd === '-v') {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf-8'));
+    console.log(pkg.version);
   } else {
     console.error(`[apollo-copilot] unknown command: ${cmd}`);
     console.error('Usage:');

@@ -262,6 +262,15 @@ unreadable file, invalid JSON, unknown command), `3` findings reported (only wit
 `--fail-on-findings`; without it findings still exit `0`). Use the flag to gate CI:
 `apollo-copilot inspect snapshot.json --fail-on-findings`.
 
+#### One real run: find, repair, verify
+
+![Real run: inspect finds 5 findings, cacheAgentGraph + patchCache apply 2 repairs, re-inspect shows dangling 0 and unreachable 0](https://raw.githubusercontent.com/nihar777/apollo-cache-copilot/main/docs/img/real-run.png)
+
+Output of the published 1.3.0 package on a demo snapshot with planted defects.
+The orphaned ref and the unreachable entity are repaired by `patchCache`. The
+inline objects with no `__typename` / `id` are reported but **not** repairable:
+they come from the query or fragment, not from cache corruption.
+
 ### `apollo-copilot mcp`
 
 Starts the MCP server on stdio and blocks. Only useful when an MCP client owns
