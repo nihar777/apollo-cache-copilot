@@ -572,4 +572,31 @@ describe('patchCache', () => {
     expect(output.collected).toEqual([]);
     expect(cache.extract()).toEqual(before);
   });
+
+  it('records an error when modify/evict targets an entity that is not in the cache', () => {
+    const cache = restored();
+
+    const output = patchCache(cache, {
+      operations: [
+        { type: 'modify', id: 'Usr:2', fields: { avatar: { action: 'DELETE' } } },
+        { type: 'evict', id: 'Ghost:9' },
+        // Real entity, field absent: a legitimate no-op, no error.
+        { type: 'modify', id: 'User:2', fields: { nope: { action: 'DELETE' } } },
+      ],
+    });
+
+    expect(output.results.map((r) => r.changed)).toEqual([false, false, false]);
+    expect(output.results[0].error).toBe('entity not found: Usr:2');
+    expect(output.results[1].error).toBe('entity not found: Ghost:9');
+    expect(output.results[2].error).toBeUndefined();
+  });
+
+  it('flags a missing entity on a dry run too', () => {
+    const output = patchCache(restored(), {
+      dryRun: true,
+      operations: [{ type: 'evict', id: 'Ghost:9' }],
+    });
+
+    expect(output.results[0].error).toBe('entity not found: Ghost:9');
+  });
 });

@@ -79,6 +79,17 @@ function applyOperation(cache: ApolloCache<any>, op: PatchOperation): boolean {
   });
 }
 
+/**
+ * Why an op that changed nothing did nothing, when the cause is a target that
+ * isn't in the cache — a typo'd or stale id otherwise looks like a harmless
+ * no-op. Only consulted after the fact (or in a dry run) because `extract` is
+ * a full cache walk.
+ */
+function missingEntityError(cache: ApolloCache<any>, op: PatchOperation): string | undefined {
+  const optimistic = op.type === 'modify' && !!op.optimistic;
+  return op.id in cache.extract(optimistic) ? undefined : `entity not found: ${op.id}`;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -98,7 +109,10 @@ export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheO
   if (args.dryRun) {
     return {
       dryRun: true,
-      results: args.operations.map((operation) => ({ operation, changed: false })),
+      results: args.operations.map((operation) => {
+        const error = missingEntityError(cache, operation);
+        return error ? { operation, changed: false, error } : { operation, changed: false };
+      }),
       collected: [],
     };
   }
@@ -106,7 +120,9 @@ export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheO
   const results: PatchResult[] = [];
   for (const operation of args.operations) {
     try {
-      results.push({ operation, changed: applyOperation(cache, operation) });
+      const changed = applyOperation(cache, operation);
+      const error = changed ? undefined : missingEntityError(cache, operation);
+      results.push(error ? { operation, changed, error } : { operation, changed });
     } catch (err) {
       // Keep going: the remaining ops may be independent repairs.
       results.push({ operation, changed: false, error: String(err) });
