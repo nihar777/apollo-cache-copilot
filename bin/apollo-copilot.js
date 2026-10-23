@@ -5,6 +5,7 @@
  * Subcommands:
  *   apollo-copilot [mcp]              Start the Stdio MCP server (default if no args)
  *   apollo-copilot inspect FILE       Read a JSON cache snapshot and print diagnostics
+ *                                     (--fail-on-findings: exit 3 if any finding)
  *   apollo-copilot install-cursor     Write this server into Cursor's mcp.json
  *   apollo-copilot install-claude     Write this server into Claude Desktop's config
  *
@@ -97,7 +98,7 @@ function printDiagnostic(result) {
 
 const USAGE = `Usage:
   apollo-copilot [mcp]              Start MCP server (default)
-  apollo-copilot inspect FILE       Diagnose a cache snapshot
+  apollo-copilot inspect FILE       Diagnose a cache snapshot (--fail-on-findings: exit 3 on findings)
   apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)
   apollo-copilot install-claude     Register with Claude Desktop
   apollo-copilot --help, -h         Show this help
@@ -169,14 +170,17 @@ async function main() {
     }
   } else if (cmd === 'inspect') {
     // Inspect subcommand
-    if (!arg) {
+    const rest = process.argv.slice(3);
+    const failOnFindings = rest.includes('--fail-on-findings');
+    const file = rest.find((a) => !a.startsWith('--'));
+    if (!file) {
       console.error('[apollo-copilot] inspect requires a file path');
-      console.error('Usage: apollo-copilot inspect <cache-snapshot.json>');
+      console.error('Usage: apollo-copilot inspect <cache-snapshot.json> [--fail-on-findings]');
       process.exit(2);
     }
 
     try {
-      const cache = await readCacheSnapshot(arg);
+      const cache = await readCacheSnapshot(file);
       const tracer = new Tracer();
       const result = tracer.measure(
         'inspectDanglingRefs',
@@ -186,6 +190,7 @@ async function main() {
       printDiagnostic(result);
       console.log(formatTraceSummary(tracer.export()));
       console.log();
+      if (failOnFindings && result.findings.length > 0) process.exitCode = 3;
     } catch (err) {
       console.error('[apollo-copilot] inspect failed:', err.message);
       process.exit(1);
