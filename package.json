@@ -70,7 +70,7 @@
     "zod": "^4.4.3"
   },
   "overrides": {
-    "hono": "^4.13.13"
+    "hono": "^4.13.18"
   },
   "repository": {
     "type": "git",
