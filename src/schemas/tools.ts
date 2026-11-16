@@ -212,6 +212,13 @@ export const PatchCacheInputSchema = z.object({
     .default(false)
     .describe('Validate `operations` against the schema and the policy guards, then return without touching the cache. ' +
         'Validation only, not a preview: every result reports `changed: false`, so it cannot tell you which operations would change something.'),
+  atomic: z
+    .boolean()
+    .default(false)
+    .describe(
+      'All-or-nothing: snapshot the cache first and restore it if any operation errors, then stop. ' +
+        'Default false keeps best-effort behavior (failed ops are recorded, the rest still run).',
+    ),
   approved: z
     .boolean()
     .default(false)

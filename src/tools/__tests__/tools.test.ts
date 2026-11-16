@@ -246,6 +246,7 @@ describe('PatchCacheInputSchema', () => {
       operations: [{ type: 'evict', id: 'Post:999', broadcast: true }],
       gc: false,
       dryRun: false,
+      atomic: false,
       approved: false,
     });
   });
