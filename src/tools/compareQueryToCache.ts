@@ -3,6 +3,7 @@ import { InMemoryCache } from '@apollo/client/cache/index.js';
 import { gql } from '@apollo/client/core/index.js';
 import type { FragmentDefinitionNode, SelectionSetNode } from 'graphql';
 
+import { assertSafeInput } from '../security/guardrails.js';
 import {
   CompareQueryToCacheInputSchema,
   CompareQueryToCacheOutputSchema,
@@ -124,6 +125,13 @@ export function toMissingEntries(missing: unknown): unknown[] {
 }
 
 export function compareQueryToCache(input: unknown): CompareQueryToCacheOutput {
+  // Public export, so guard here and not only at the MCP boundary. Only
+  // `variables` is walked: it is the free-form caller input, and the cache
+  // snapshot is large and already checked by the MCP adapter.
+  if (typeof input === 'object' && input !== null && 'variables' in input) {
+    assertSafeInput((input as { variables: unknown }).variables, { label: 'variables' });
+  }
+
   const args = CompareQueryToCacheInputSchema.parse(input);
 
   const query = gql(args.query);

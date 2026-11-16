@@ -6,6 +6,7 @@
 import { InMemoryCache } from '@apollo/client/cache/index.js';
 import { describe, expect, it } from 'vitest';
 
+import { GuardrailError } from '../../security/guardrails.js';
 import { compareQueryToCache } from '../compareQueryToCache.js';
 import { inspectDanglingRefs } from '../inspectDanglingRefs.js';
 import { patchCache } from '../patchCache.js';
@@ -61,7 +62,7 @@ describe('break 2: hostile input into compareQueryToCache', () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
-  it('refuses or survives a deeply nested payload (depth 5000)', () => {
+  it('refuses a deeply nested payload with a guardrail error, not a stack overflow', () => {
     let deep: Record<string, unknown> = {};
     const root = deep;
     for (let i = 0; i < 5000; i++) {
@@ -80,7 +81,7 @@ describe('break 2: hostile input into compareQueryToCache', () => {
     } catch (e) {
       err = e;
     }
-    expect(err instanceof RangeError).toBe(false);
+    expect(err).toBeInstanceOf(GuardrailError);
   });
 });
 
