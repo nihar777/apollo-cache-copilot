@@ -103,13 +103,22 @@ export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheO
     };
   }
 
+  // ponytail: whole-cache snapshot, O(cache size); fine for opt-in repair batches.
+  const snapshot = args.atomic ? cache.extract() : undefined;
+
   const results: PatchResult[] = [];
   for (const operation of args.operations) {
     try {
       results.push({ operation, changed: applyOperation(cache, operation) });
     } catch (err) {
-      // Keep going: the remaining ops may be independent repairs.
       results.push({ operation, changed: false, error: String(err) });
+      if (snapshot !== undefined) {
+        // Atomic: undo everything applied so far and stop.
+        cache.restore(snapshot);
+        for (const r of results) r.changed = false;
+        return { dryRun: false, results, collected: [] };
+      }
+      // Best-effort: keep going, the remaining ops may be independent repairs.
     }
   }
 
