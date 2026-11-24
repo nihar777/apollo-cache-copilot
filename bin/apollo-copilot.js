@@ -8,6 +8,7 @@
  *                                     (--json: raw JSON; --fail-on-findings: exit 3 if any finding)
  *   apollo-copilot install-cursor     Write this server into Cursor's mcp.json
  *   apollo-copilot install-claude     Write this server into Claude Desktop's config
+ *   apollo-copilot feedback           Print the feature-request link
  *
  * All logic lives in dist/; this file only dispatches and handles errors.
  */
@@ -101,6 +102,7 @@ const USAGE = `Usage:
   apollo-copilot inspect FILE       Diagnose a cache snapshot (--json, --fail-on-findings: exit 3 on findings)
   apollo-copilot install-cursor     Register with Cursor (add --project for repo-local)
   apollo-copilot install-claude     Register with Claude Desktop
+  apollo-copilot feedback           Tell us what to build next (prints a link)
   apollo-copilot --help, -h         Show this help
   apollo-copilot --version, -v      Show version`;
 
@@ -205,6 +207,12 @@ async function main() {
     installCursor(arg);
   } else if (cmd === 'install-claude') {
     installClaude();
+  } else if (cmd === 'feedback') {
+    // ponytail: prints a link, no network/telemetry; swap for a form URL if issues get too little traffic
+    console.log(
+      'What should apollo-cache-copilot do next? Tell us (1 min, GitHub account needed):\n' +
+        '  https://github.com/nihar777/apollo-cache-copilot/issues/new?template=feature_request.yml'
+    );
   } else if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
     console.log(USAGE);
   } else if (cmd === '--version' || cmd === '-v') {

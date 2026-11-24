@@ -445,6 +445,13 @@ repository, so none of the figures below is a claim about the current release.
 | 5 | Developer time from symptom to named root cause | < 5 min (vs. hours) |
 | 6 | Tokens sent to the model per diagnosis | < 10k — findings + subgraph, never the whole cache |
 
+## Feedback
+
+Using it? Tell us what you want built next — what worked, what was missing, what
+you'd pay in time to have. Run `apollo-copilot feedback`, or
+[open a feature request](https://github.com/nihar777/apollo-cache-copilot/issues/new?template=feature_request.yml).
+One line is enough.
+
 ## Contributing
 
 Contributions welcome. Start with **[CONTRIBUTING.md](CONTRIBUTING.md)** — it
