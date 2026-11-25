@@ -74,14 +74,13 @@ function printDiagnostic(result) {
   }
 
   // Print each kind
-  const kinds = ['ORPHANED_REF', 'DANGLING_REF', 'UNREACHABLE_ENTITY', 'MISSING_TYPENAME', 'MISSING_ID', 'UNSCOPED_IDENTITY_FIELD'];
+  const kinds = ['ORPHANED_REF', 'UNREACHABLE_ENTITY', 'MISSING_TYPENAME', 'MISSING_ID', 'UNSCOPED_IDENTITY_FIELD'];
   for (const kind of kinds) {
     if (!byKind[kind]) continue;
 
     const group = byKind[kind];
     const icon = {
       'ORPHANED_REF': '⚠',
-      'DANGLING_REF': '⚠',
       'UNREACHABLE_ENTITY': '🗑',
       'MISSING_TYPENAME': '❌',
       'MISSING_ID': '❌',

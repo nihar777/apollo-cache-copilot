@@ -93,6 +93,21 @@ describe('integration: CLI entry points', () => {
     expect(content).toContain('#!/usr/bin/env node');
   });
 
+  it('CLI finding kinds and icons match the emitted finding kinds', async () => {
+    const source = readFileSync(new URL('../../bin/apollo-copilot.js', import.meta.url), 'utf-8');
+    const api = (await import('../../dist/index.js')) as unknown as {
+      FindingKindSchema: { options: readonly string[] };
+    };
+    const expectedKinds = [...api.FindingKindSchema.options].sort();
+    const kinds = source.match(/const kinds = \[([\s\S]*?)\];/)?.[1] ?? '';
+    const icons = source.match(/const icon = \{([\s\S]*?)\}\[kind\]/)?.[1] ?? '';
+    const listedKinds = [...kinds.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort();
+    const iconKinds = [...icons.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]).sort();
+
+    expect(listedKinds).toEqual(expectedKinds);
+    expect(iconKinds).toEqual(expectedKinds);
+  });
+
   it('inspect exits 0 on findings by default and 3 only with --fail-on-findings', () => {
     const bin = new URL('../../bin/apollo-copilot.js', import.meta.url).pathname;
     const dir = mkdtempSync(join(tmpdir(), 'apollo-copilot-'));
