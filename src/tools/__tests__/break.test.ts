@@ -129,9 +129,12 @@ describe('break 3: patchCache atomicity', () => {
     expect(JSON.stringify(cache.extract())).toBe(before);
   });
 
-  it('atomic: rolls back earlier ops when a later target is missing', () => {
+  it('atomic: does not apply operations when a later target is missing', () => {
     const cache = seeded();
-    const before = cache.extract();
+    cache.recordOptimisticTransaction((optimisticCache) => {
+      optimisticCache.modify({ id: 'ROOT_QUERY', fields: { a: () => 3 } });
+    }, 'pending');
+    const before = cache.extract(true);
 
     const out = patchCache(cache, {
       atomic: true,
@@ -145,7 +148,7 @@ describe('break 3: patchCache atomicity', () => {
       { changed: false, error: undefined },
       { changed: false, error: 'entity not found' },
     ]);
-    expect(cache.extract()).toEqual(before);
+    expect(cache.extract(true)).toEqual(before);
   });
 
   it('non-atomic (default): keeps earlier ops applied when a later one throws', () => {

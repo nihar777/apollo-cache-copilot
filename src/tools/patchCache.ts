@@ -84,6 +84,25 @@ function targetExists(cache: ApolloCache<any>, op: PatchOperation): boolean {
   return Object.hasOwn(cache.extract(optimistic), op.id);
 }
 
+function firstMissingTarget(
+  cache: ApolloCache<any>,
+  operations: PatchOperation[],
+): number | undefined {
+  const baseEntities = new Set(Object.keys(cache.extract()));
+  const optimisticEntities = new Set(Object.keys(cache.extract(true)));
+
+  for (const [index, operation] of operations.entries()) {
+    const entities =
+      operation.type === 'evict' || operation.optimistic ? optimisticEntities : baseEntities;
+    if (!entities.has(operation.id)) return index;
+
+    if (operation.type === 'evict' && !operation.fieldName) {
+      baseEntities.delete(operation.id);
+      optimisticEntities.delete(operation.id);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -110,6 +129,21 @@ export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheO
       })),
       collected: [],
     };
+  }
+
+  if (args.atomic) {
+    const missingIndex = firstMissingTarget(cache, args.operations);
+    if (missingIndex !== undefined) {
+      return {
+        dryRun: false,
+        results: args.operations.slice(0, missingIndex + 1).map((operation, index) => ({
+          operation,
+          changed: false,
+          ...(index === missingIndex && { error: 'entity not found' }),
+        })),
+        collected: [],
+      };
+    }
   }
 
   // ponytail: whole-cache snapshot, O(cache size); fine for opt-in repair batches.
