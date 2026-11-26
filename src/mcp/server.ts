@@ -240,7 +240,9 @@ export function createServer(): McpServer {
       const failed = output.results.filter((r) => r.error !== undefined).length;
 
       const summary = output.dryRun
-        ? `Dry run: ${output.results.length} operation(s) validated, cache untouched.`
+        ? `Dry run: ${output.results.length} operation(s) validated` +
+          (failed ? `, ${failed} failed` : '') +
+          ', cache untouched.'
         : `${changed}/${output.results.length} operation(s) changed the cache` +
           (failed ? `, ${failed} failed` : '') +
           (output.collected.length ? `; gc collected ${output.collected.length}` : '') +

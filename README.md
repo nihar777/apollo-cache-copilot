@@ -166,7 +166,9 @@ unreachable, and `__META` itself is not treated as an entity (or counted in
 Operations are declarative descriptors so they survive a JSON hop; the tool
 rehydrates them into the functions `cache.modify` wants. Ordered, and failures
 are *recorded* rather than thrown so a bad key mid-batch cannot strand the cache
-half-patched.
+half-patched. An operation targeting an entity that is not in the cache reports
+`error: 'entity not found'`; modifying a present entity's absent field remains a
+no-op without an error.
 
 ```ts
 import { patchCache } from 'apollo-cache-copilot';
@@ -183,8 +185,8 @@ const { dryRun, results, collected } = patchCache(client.cache, {
     { type: 'evict', id: 'ROOT_QUERY', fieldName: 'user', args: { id: '1' } },
   ],
   gc: true,       // run cache.gc() once, after everything lands
-  dryRun: false,  // true = validate only: nothing is applied and nothing is previewed
-  atomic: false,  // true = if any op throws, restore the pre-batch cache and stop (default: record the error, run the rest)
+  dryRun: false,  // true = validate only: nothing is applied or previewed; missing entities are still reported
+  atomic: false,  // true = if any op fails, restore the pre-batch cache and stop (default: record the error, run the rest)
 });
 
 results.forEach((r) => console.log(r.changed, r.error ?? ''));
@@ -297,7 +299,7 @@ thing.
 | `inspect_dangling_refs` | `cache`, optional `rootIds` / `includeUnreachable` / `includeNormalizationGaps` | Read-only. Returns `findings` + `stats`. |
 | `diagnose_cache_graph` | `cache` | Read-only. Runs the full graph. Returns `findings`, `proposedPatches`, `narration`. Plans only. |
 | `compare_query_to_cache` | `cache`, `query`, optional `variables` / `rootId` / `returnPartialData` | Read-only. Runs the query against the snapshot; returns `complete`, `misses` (with reason) and `satisfiedFields`. |
-| `patch_cache` | `cache`, `operations`, `gc`, `dryRun`, `atomic` | Restores the snapshot into a throwaway `InMemoryCache`, patches it, returns `results` + the re-extracted `cache`. `dryRun` validates only; it does not preview what would change. `atomic` rolls back the whole batch if any op throws (Apollo watchers already notified by earlier ops are not un-notified). |
+| `patch_cache` | `cache`, `operations`, `gc`, `dryRun`, `atomic` | Restores the snapshot into a throwaway `InMemoryCache`, patches it, returns `results` + the re-extracted `cache`. `dryRun` validates only; it does not preview what would change, but reports missing entity targets. `atomic` rolls back the whole batch if any op fails (Apollo watchers already notified by earlier ops are not un-notified). |
 
 `patch_cache` carries the snapshot because a stdio server has no live cache to
 hand the patcher — only JSON. Diff the returned `cache` against yours, or

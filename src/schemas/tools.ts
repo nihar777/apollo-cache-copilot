@@ -210,13 +210,13 @@ export const PatchCacheInputSchema = z.object({
   dryRun: z
     .boolean()
     .default(false)
-    .describe('Validate `operations` against the schema and the policy guards, then return without touching the cache. ' +
-        'Validation only, not a preview: every result reports `changed: false`, so it cannot tell you which operations would change something.'),
+    .describe('Validate `operations` against the schema and policy guards, then return without touching the cache. ' +
+        'Not a preview: every result reports `changed: false`, but missing entity targets are reported as errors.'),
   atomic: z
     .boolean()
     .default(false)
     .describe(
-      'All-or-nothing: snapshot the cache first and restore it if any operation errors, then stop. ' +
+      'All-or-nothing: snapshot the cache first and restore it if any operation fails, then stop. ' +
         'Default false keeps best-effort behavior (failed ops are recorded, the rest still run).',
     ),
   approved: z
@@ -231,7 +231,7 @@ export const PatchCacheInputSchema = z.object({
 export const PatchResultSchema = z.object({
   operation: PatchOperationSchema.describe('The operation this result is reporting on, echoed back.'),
   changed: z.boolean().describe('Whether `cache.modify` / `cache.evict` actually changed anything.'),
-  error: z.string().optional().describe('Set when this one operation failed; the rest of the batch still ran.'),
+  error: z.string().optional().describe('Set when this operation could not run; best-effort batches continue.'),
 });
 
 /** One measured step in a trace — see `src/telemetry/tracer.ts`. */

@@ -744,17 +744,16 @@ describe('evict is subject to approval and role policy', () => {
   });
 
   describe('missing and repeated targets', () => {
-    it('evicting a missing entity reports changed:false and no error', () => {
+    it('evicting a missing entity reports an error', () => {
       const out = runPatchCache({ cache: cache(), operations: [{ type: 'evict', id: 'Nope:1' }] });
-      expect(out.results[0]).toMatchObject({ changed: false });
-      expect(out.results[0].error).toBeUndefined();
+      expect(out.results[0]).toMatchObject({ changed: false, error: 'entity not found' });
       expect(out.cache).toHaveProperty('User:1');
     });
 
-    it('evicting the same entity twice: first changes, second is a no-op', () => {
+    it('evicting the same entity twice reports the second missing target', () => {
       const out = runPatchCache({ cache: cache(), operations: [evictOp, evictOp] });
       expect(out.results.map((r) => r.changed)).toEqual([true, false]);
-      expect(out.results.every((r) => r.error === undefined)).toBe(true);
+      expect(out.results.map((r) => r.error)).toEqual([undefined, 'entity not found']);
     });
   });
 

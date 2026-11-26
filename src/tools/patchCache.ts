@@ -79,6 +79,11 @@ function applyOperation(cache: ApolloCache<any>, op: PatchOperation): boolean {
   });
 }
 
+function targetExists(cache: ApolloCache<any>, op: PatchOperation): boolean {
+  const optimistic = op.type === 'evict' || op.optimistic;
+  return Object.hasOwn(cache.extract(optimistic), op.id);
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -98,7 +103,11 @@ export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheO
   if (args.dryRun) {
     return {
       dryRun: true,
-      results: args.operations.map((operation) => ({ operation, changed: false })),
+      results: args.operations.map((operation) => ({
+        operation,
+        changed: false,
+        ...(!targetExists(cache, operation) && { error: 'entity not found' }),
+      })),
       collected: [],
     };
   }
@@ -109,6 +118,16 @@ export function patchCache(cache: ApolloCache<any>, input: unknown): PatchCacheO
   const results: PatchResult[] = [];
   for (const operation of args.operations) {
     try {
+      if (!targetExists(cache, operation)) {
+        results.push({ operation, changed: false, error: 'entity not found' });
+        if (snapshot !== undefined) {
+          // Atomic: undo everything applied so far and stop.
+          cache.restore(snapshot);
+          for (const r of results) r.changed = false;
+          return { dryRun: false, results, collected: [] };
+        }
+        continue;
+      }
       results.push({ operation, changed: applyOperation(cache, operation) });
     } catch (err) {
       results.push({ operation, changed: false, error: String(err) });
