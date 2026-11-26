@@ -287,6 +287,30 @@ describe('patch_cache over InMemory', () => {
     expect(output.cache['User:2'].posts).toEqual([{ __ref: 'Post:200' }]);
   });
 
+  it('reports missing targets through patch_cache, including on dry runs', async () => {
+    const { client } = await connectInMemory();
+
+    const result = await client.callTool({
+      name: 'patch_cache',
+      arguments: {
+        cache: orphanedPointer.cache,
+        dryRun: true,
+        operations: [
+          { type: 'modify', id: 'Nope:1', fields: { name: { action: 'DELETE' } } },
+          { type: 'evict', id: 'Nope:2' },
+        ],
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = PatchCacheMcpOutputSchema.parse(structured(result));
+    expect(output.results.map(({ changed, error }) => ({ changed, error }))).toEqual([
+      { changed: false, error: 'entity not found' },
+      { changed: false, error: 'entity not found' },
+    ]);
+    expect((result.content as { text: string }[])[0].text).toMatch(/2 failed/);
+  });
+
   it('rejects an unknown patch action instead of ignoring it', async () => {
     const { client } = await connectInMemory();
 

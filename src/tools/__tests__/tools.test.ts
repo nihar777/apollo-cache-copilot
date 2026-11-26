@@ -553,6 +553,49 @@ describe('patchCache', () => {
     expect(cache.extract()['Post:999']).toBeUndefined();
   });
 
+  it('reports missing entity targets but leaves missing fields as ordinary no-ops', () => {
+    const cache = new InMemoryCache().restore({
+      ROOT_QUERY: { __typename: 'Query' },
+      'User:1': { __typename: 'User', id: '1', name: 'A' },
+    });
+
+    const output = patchCache(cache, {
+      operations: [
+        { type: 'modify', id: 'Usr:1', fields: { name: { action: 'DELETE' } } },
+        { type: 'evict', id: 'Ghost:9' },
+        { type: 'modify', id: 'User:1', fields: { nope: { action: 'DELETE' } } },
+      ],
+    });
+
+    expect(output.results.map(({ changed, error }) => ({ changed, error }))).toEqual([
+      { changed: false, error: 'entity not found' },
+      { changed: false, error: 'entity not found' },
+      { changed: false, error: undefined },
+    ]);
+    expect(cache.extract()['User:1']).toEqual({ __typename: 'User', id: '1', name: 'A' });
+  });
+
+  it('reports missing entities during dry runs without touching the cache', () => {
+    const cache = restored();
+    const before = cache.extract();
+
+    const output = patchCache(cache, {
+      dryRun: true,
+      operations: [
+        { type: 'modify', id: 'Nope:1', fields: { name: { action: 'DELETE' } } },
+        { type: 'evict', id: 'Nope:2' },
+        { type: 'modify', id: 'User:2', fields: { absent: { action: 'DELETE' } } },
+      ],
+    });
+
+    expect(output.results.map(({ changed, error }) => ({ changed, error }))).toEqual([
+      { changed: false, error: 'entity not found' },
+      { changed: false, error: 'entity not found' },
+      { changed: false, error: undefined },
+    ]);
+    expect(cache.extract()).toEqual(before);
+  });
+
   it('leaves the cache untouched on a dry run', () => {
     const cache = restored();
     const before = cache.extract();

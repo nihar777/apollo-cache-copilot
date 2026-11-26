@@ -104,6 +104,7 @@ describe('break 3: patchCache atomicity', () => {
       ],
     });
     expect(out.results).toHaveLength(3);
+    expect(out.results[1]).toMatchObject({ changed: false, error: 'entity not found' });
     expect(out.results[2].changed).toBe(true);
   });
 
@@ -126,6 +127,28 @@ describe('break 3: patchCache atomicity', () => {
     expect(out.results[1].error).toBeDefined();
     expect(out.results.every((r) => !r.changed)).toBe(true);
     expect(JSON.stringify(cache.extract())).toBe(before);
+  });
+
+  it('atomic: does not apply operations when a later target is missing', () => {
+    const cache = seeded();
+    cache.recordOptimisticTransaction((optimisticCache) => {
+      optimisticCache.modify({ id: 'ROOT_QUERY', fields: { a: () => 3 } });
+    }, 'pending');
+    const before = cache.extract(true);
+
+    const out = patchCache(cache, {
+      atomic: true,
+      operations: [
+        { type: 'modify', fields: { a: { action: 'SET', value: 10 } } },
+        { type: 'modify', id: 'Nope:1', fields: { x: { action: 'DELETE' } } },
+      ],
+    });
+
+    expect(out.results.map(({ changed, error }) => ({ changed, error }))).toEqual([
+      { changed: false, error: undefined },
+      { changed: false, error: 'entity not found' },
+    ]);
+    expect(cache.extract(true)).toEqual(before);
   });
 
   it('non-atomic (default): keeps earlier ops applied when a later one throws', () => {
